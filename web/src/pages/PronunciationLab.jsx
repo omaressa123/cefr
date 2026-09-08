@@ -1,0 +1,5 @@
+import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import Layout from "../components/Layout.jsx";
+import { api } from "../api/client.js";
+export default function PronunciationLab() { const [items, setItems] = useState([]); useEffect(() => { api.listPronunciation().then(setItems); }, []); return <Layout><div className="eyebrow">Pronunciation lab</div><h1>Listen closely. Speak clearly.</h1><p>Practice and repeat with real audio. Speech scoring is not enabled until a provider is configured, so no artificial score is shown.</p><div className="content-list">{items.map((item) => <Link className="panel content-row" to={`/learning/pronunciation/${item.id}`} key={item.id}><div><span className="pill accent">{item.cefr_level}</span><h3>{item.title}</h3><p>{item.explanation}</p></div><div className="row-meta">{item.sound}</div></Link>)}</div></Layout>; }

@@ -1,0 +1,64 @@
+services:
+  database:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change-this-to-a-long-random-root-password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-cefr_practice_partner}
+      MYSQL_USER: ${MYSQL_USER:-cefr}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-change-this-to-a-long-random-database-password}
+    volumes:
+      - ./data/database:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u$${MYSQL_USER} -p$${MYSQL_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - private
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER:-cefr}:${MYSQL_PASSWORD}@database:3306/${MYSQL_DATABASE:-cefr_practice_partner}
+      JWT_SECRET: ${JWT_SECRET:-change-this-to-a-long-random-string}
+      PORT: 4000
+      NODE_ENV: production
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
+    depends_on:
+      database:
+        condition: service_healthy
+    command: sh -c "npm run migrate && npm start"
+    volumes:
+      - ./data:/data
+      - ./uploads:/uploads
+      - ./backups:/backups
+    networks:
+      - private
+      - public
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  web:
+    build: ./web
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - public
+
+networks:
+  private:
+    internal: true
+  public:

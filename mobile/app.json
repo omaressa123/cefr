@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "CEFR Practice Partner",
+    "slug": "cefr-practice-partner",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#100E1A",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.cefrpracticepartner.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#100E1A"
+      }
+    },
+    "plugins": [
+      "expo-status-bar"
+    ]
+  }
+}

@@ -1,0 +1,5 @@
+import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import Layout from "../components/Layout.jsx";
+import { api } from "../api/client.js";
+export default function GrammarRoadmap() { const [items, setItems] = useState([]); const [level, setLevel] = useState(""); useEffect(() => { api.listGrammar(level).then(setItems); }, [level]); return <Layout><div className="eyebrow">Grammar roadmap</div><h1>From foundations to nuance.</h1><div className="level-tabs"><button className={!level ? "active" : "secondary"} onClick={() => setLevel("")}>All</button>{["A1", "A2", "B1", "B2", "C1", "C2"].map((item) => <button className={level === item ? "active" : "secondary"} onClick={() => setLevel(item)} key={item}>{item}</button>)}</div><div className="content-list">{items.map((item) => <Link className="panel content-row" to={`/learning/grammar/${item.id}`} key={item.id}><div><span className="pill accent">{item.cefr_level}</span><h3>{item.title}</h3><p>{item.explanation}</p></div><div className="row-meta">{item.progress_status === "completed" ? "Complete" : "Open lesson"}</div></Link>)}</div></Layout>; }
