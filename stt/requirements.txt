@@ -1,0 +1,11 @@
+# Pinned to the exact versions proven working in the host sidecar venv
+# (/tmp/opencode/whisper-env): torch 2.14.0+cpu, transformers 5.17.0.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.14.0+cpu
+transformers==5.17.0
+fastapi==0.141.1
+python-multipart==0.0.32
+uvicorn==0.52.4
+soundfile==0.14.0
+librosa==1.0.0
+numpy==2.5.3

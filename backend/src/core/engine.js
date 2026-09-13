@@ -1,8 +1,7 @@
 import { pool } from "../db/pool.js";
 import { generateConversationalReply, analyzeGrammar } from "./llmRouter.js";
-import { synthesize } from "./audio.js";
+import { synthesize, transcribe } from "./audio.js";
 import { ERROR_CATEGORIES } from "./taxonomy.js";
-import { config } from "../config.js";
 
 // Verbatim Quotation Guardrail: discard any error whose quote cannot be
 // found character-for-character in the transcript, and any error outside
@@ -32,81 +31,9 @@ function applyPedagogicalMode(errors, cefrLevel) {
   }));
 }
 
-// ---------------------------------------------------------------------------
-// ACP BRIDGE — call the Python ACP engine for turn processing
-// Falls back to the local cloud-API path if ACP is unreachable.
-// ---------------------------------------------------------------------------
-
-async function processTurnViaACP({ sessionId, turnIndex, transcript, cefrLevel, history }) {
-  const url = `${config.acpBaseUrl}/api/v1/bridge/turn-text`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      text: transcript,
-      cefr_level: cefrLevel,
-      topic: "",
-      feedback_style: "auto",
-    }),
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(`ACP bridge error ${response.status}: ${err.detail || "unknown"}`);
-  }
-  const data = await response.json();
-
-  // Persist the exchange to the local DB so the rest of the app still works
-  await pool.query(
-    `INSERT INTO exchanges (session_id, turn_index, student_text, ai_reply, errors)
-     VALUES (?, ?, ?, ?, ?)`,
-    [sessionId, turnIndex, transcript, data.replyText, JSON.stringify(data.errors || [])]
-  );
-
-  return {
-    replyText: data.replyText,
-    audioBase64: data.audioBase64 || null,
-    errors: data.errors || [],
-  };
-}
-
-async function processTurnViaACP_Audio({ sessionId, turnIndex, audioBuffer, mimeType, cefrLevel }) {
-  const url = `${config.acpBaseUrl}/api/v1/bridge/turn-audio`;
-  const formData = new FormData();
-  const blob = new Blob([audioBuffer], { type: mimeType });
-  formData.append("audio", blob, "turn.webm");
-  formData.append("cefr_level", cefrLevel);
-
-  const response = await fetch(url, {
-    method: "POST",
-    body: formData,
-    signal: AbortSignal.timeout(45_000),
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(`ACP bridge error ${response.status}: ${err.detail || "unknown"}`);
-  }
-  const data = await response.json();
-
-  await pool.query(
-    `INSERT INTO exchanges (session_id, turn_index, student_text, ai_reply, errors)
-     VALUES (?, ?, ?, ?, ?)`,
-    [sessionId, turnIndex, data.transcript, data.replyText, JSON.stringify(data.errors || [])]
-  );
-
-  return {
-    transcript: data.transcript,
-    replyText: data.replyText,
-    audioBase64: data.audioBase64 || null,
-    errors: data.errors || [],
-  };
-}
-
-// ---------------------------------------------------------------------------
-// LOCAL CLOUD PATH — original implementation using llmRouter + audio
-// ---------------------------------------------------------------------------
-
-async function processTurnLocal({ sessionId, turnIndex, transcript, cefrLevel, history }) {
+// Turn orchestrator: generates conversational reply and grammar assessment
+// concurrently, synthesizes TTS audio, applies verbatim guardrails, and persists.
+export async function processTurn({ sessionId, turnIndex, transcript, cefrLevel, history }) {
   const [replySettled, assessmentSettled] = await Promise.allSettled([
     generateConversationalReply({ transcript, cefrLevel, history }),
     analyzeGrammar({ transcript, cefrLevel }),
@@ -117,7 +44,15 @@ async function processTurnLocal({ sessionId, turnIndex, transcript, cefrLevel, h
   }
   const replyText = replySettled.value;
 
-  const audioBuffer = await synthesize(replyText);
+  // TTS is an enhancement, not the assessed loop: if the voice provider is
+  // unreachable the turn must still succeed (both clients null-check
+  // audioBase64 before playing).
+  let audioBuffer = null;
+  try {
+    audioBuffer = await synthesize(replyText);
+  } catch (err) {
+    console.warn("TTS synthesis failed for this turn (reply text still returned):", err?.message);
+  }
 
   let errors = [];
   if (assessmentSettled.status === "fulfilled") {
@@ -140,32 +75,12 @@ async function processTurnLocal({ sessionId, turnIndex, transcript, cefrLevel, h
   };
 }
 
-// ---------------------------------------------------------------------------
-// PUBLIC API — auto-routes to ACP or local based on config
-// ---------------------------------------------------------------------------
-
-export async function processTurn({ sessionId, turnIndex, transcript, cefrLevel, history }) {
-  if (config.acpBaseUrl) {
-    try {
-      return await processTurnViaACP({ sessionId, turnIndex, transcript, cefrLevel, history });
-    } catch (err) {
-      console.warn(`ACP bridge unavailable (${err.message}), falling back to local cloud path`);
-    }
-  }
-  return processTurnLocal({ sessionId, turnIndex, transcript, cefrLevel, history });
-}
-
+// Transcribes audio with the configured STT provider (e.g. local verbatim-Whisper
+// or cloud Whisper), then runs turn processing.
 export async function processTurnAudio({ sessionId, turnIndex, audioBuffer, mimeType, cefrLevel }) {
-  if (config.acpBaseUrl) {
-    try {
-      return await processTurnViaACP_Audio({ sessionId, turnIndex, audioBuffer, mimeType, cefrLevel });
-    } catch (err) {
-      console.warn(`ACP bridge unavailable (${err.message}), falling back to local path`);
-    }
-  }
-  // Local fallback: the sessions.js route already called transcribe() before us,
-  // so this path won't be reached for audio in normal use — it's a safety net.
-  throw new Error("ACP engine is unavailable and no local STT fallback is configured. Please start the ACP server.");
+  const transcript = await transcribe(audioBuffer, mimeType);
+  const result = await processTurn({ sessionId, turnIndex, transcript, cefrLevel, history: [] });
+  return { transcript, ...result };
 }
 
 // Cohort-aggregated teacher report

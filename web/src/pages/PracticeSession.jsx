@@ -14,6 +14,7 @@ export default function PracticeSession() {
   const [sending, setSending] = useState(false);
   const [recording, setRecording] = useState(false);
   const [error, setError] = useState(null);
+  const [report, setReport] = useState(null);
 
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
@@ -26,6 +27,7 @@ export default function PracticeSession() {
       const s = await api.startSession(payload);
       setSession(s);
       setTurns([]);
+      setReport(null);
     } catch (err) {
       setError(err.message);
     }
@@ -159,6 +161,34 @@ export default function PracticeSession() {
           {recording ? "Stop" : "Speak"}
         </button>
       </form>
+
+      <div style={{ marginTop: "1rem" }}>
+        <button
+          type="button"
+          className="secondary"
+          onClick={async () => {
+            setError(null);
+            try {
+              setReport(await api.getSessionReport(session.id));
+            } catch (err) {
+              setError(err.message);
+            }
+          }}
+        >
+          View session report
+        </button>
+        {report && (
+          <div className="panel" style={{ marginTop: "0.8rem" }}>
+            <div className="label">Session report</div>
+            <strong>Turns: {report.turns}</strong>
+            {Object.entries(report.errorsByCategory ?? {}).map(([cat, n]) => (
+              <div key={cat} style={{ color: "var(--text-muted)" }}>
+                {cat.replace(/_/g, " ")}: {n}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </Layout>
   );
 }

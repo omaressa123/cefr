@@ -15,6 +15,8 @@ export default function PracticeSessionScreen({ route }) {
   const [sending, setSending] = useState(false);
   const [recording, setRecording] = useState(null);
   const [error, setError] = useState(null);
+  const [report, setReport] = useState(null);
+  const [revealed, setRevealed] = useState({});
 
   async function startSession() {
     setError(null);
@@ -124,15 +126,31 @@ export default function PracticeSessionScreen({ route }) {
             <Text style={{ color: colors.textMuted, borderLeftWidth: 2, borderLeftColor: colors.accentSoft, paddingLeft: 10 }}>
               {t.reply}
             </Text>
-            {t.errors?.map((e, j) => (
-              <View key={j} style={styles.errorCard}>
-                <Text style={{ color: colors.highlight, fontSize: 12, marginBottom: 4 }}>
-                  {e.category.replace(/_/g, " ")}
-                </Text>
-                <Text style={{ color: colors.text }}>"{e.quote}" — {e.explanation}</Text>
-                <Text style={{ color: colors.textMuted, marginTop: 4 }}>Suggested fix: {e.suggestion}</Text>
-              </View>
-            ))}
+            {t.errors?.map((e, j) => {
+              const key = `${i}:${j}`;
+              const guided = e.guidedDiscovery && !revealed[key];
+              return (
+                <View key={j} style={styles.errorCard}>
+                  <Text style={{ color: colors.highlight, fontSize: 12, marginBottom: 4 }}>
+                    {e.category.replace(/_/g, " ")}
+                  </Text>
+                  <Text style={{ color: colors.text }}>"{e.quote}" — {e.explanation}</Text>
+                  {e.guidedDiscovery ? (
+                    guided ? (
+                      <TouchableOpacity onPress={() => setRevealed((r) => ({ ...r, [key]: true }))}>
+                        <Text style={{ color: colors.accentStrong, marginTop: 4 }}>
+                          {e.conceptCheckQuestion || "What needs to change here?"} (tap to reveal fix)
+                        </Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <Text style={{ color: colors.textMuted, marginTop: 4 }}>Suggested fix: {e.suggestion}</Text>
+                    )
+                  ) : (
+                    <Text style={{ color: colors.textMuted, marginTop: 4 }}>Suggested fix: {e.suggestion}</Text>
+                  )}
+                </View>
+              );
+            })}
           </View>
         ))}
       </ScrollView>
@@ -153,6 +171,29 @@ export default function PracticeSessionScreen({ route }) {
           <Text style={styles.buttonText}>{recording ? "Stop" : "Speak"}</Text>
         </TouchableOpacity>
       </View>
+
+      <TouchableOpacity
+        style={[styles.smallButton, { marginTop: 8, alignItems: "center", paddingVertical: 10 }]}
+        onPress={async () => {
+          try {
+            setReport(await api.getSessionReport(session.id));
+          } catch (err) {
+            setError(err.message);
+          }
+        }}
+      >
+        <Text style={styles.buttonText}>View session report</Text>
+      </TouchableOpacity>
+      {report && (
+        <View style={[styles.errorCard, { borderLeftColor: colors.accent, marginTop: 8 }]}>
+          <Text style={{ color: colors.text, fontWeight: "700" }}>Turns: {report.turns}</Text>
+          {Object.entries(report.errorsByCategory ?? {}).map(([cat, n]) => (
+            <Text key={cat} style={{ color: colors.textMuted }}>
+              {cat.replace(/_/g, " ")}: {n}
+            </Text>
+          ))}
+        </View>
+      )}
     </View>
   );
 }

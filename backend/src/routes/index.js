@@ -5,6 +5,7 @@ import assignmentRoutes from "./assignments.js";
 import sessionRoutes from "./sessions.js";
 import reportRoutes from "./reports.js";
 import learningRoutes from "./learning.js";
+import engineRoutes from "./engine.js";
 
 const router = Router();
 
@@ -14,5 +15,6 @@ router.use("/", assignmentRoutes); // /classrooms/:id/assignments, /assignments/
 router.use("/sessions", sessionRoutes);
 router.use("/", reportRoutes); // /classrooms/:id/report
 router.use("/", learningRoutes);
+router.use("/", engineRoutes); // /engine/status
 
 export default router;

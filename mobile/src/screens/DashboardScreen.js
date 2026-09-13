@@ -104,11 +104,27 @@ export default function DashboardScreen({ navigation }) {
       />
 
       {user?.role === "student" && (
+        <>
+          <TouchableOpacity
+            style={styles.button}
+            onPress={() => navigation.navigate("Practice", { mode: "free" })}
+          >
+            <Text style={styles.buttonText}>Start free practice</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.button, styles.secondaryButton]}
+            onPress={() => navigation.navigate("Learn")}
+          >
+            <Text style={styles.secondaryButtonText}>Open learning hub</Text>
+          </TouchableOpacity>
+        </>
+      )}
+      {user?.role === "teacher" && (
         <TouchableOpacity
-          style={styles.button}
-          onPress={() => navigation.navigate("Practice", { mode: "free" })}
+          style={[styles.button, styles.secondaryButton]}
+          onPress={() => navigation.navigate("Learn")}
         >
-          <Text style={styles.buttonText}>Start free practice</Text>
+          <Text style={styles.secondaryButtonText}>Open learning hub</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -144,6 +160,8 @@ const styles = StyleSheet.create({
   pill: { color: colors.accentStrong, fontSize: 12, marginTop: 4 },
   button: { backgroundColor: colors.accent, borderRadius: 6, padding: 14, alignItems: "center", marginTop: 16 },
   buttonText: { color: colors.bg, fontWeight: "700" },
+  secondaryButton: { backgroundColor: "transparent", borderWidth: 1, borderColor: colors.border },
+  secondaryButtonText: { color: colors.text, fontWeight: "700" },
   error: {
     color: colors.error,
     borderWidth: 1,

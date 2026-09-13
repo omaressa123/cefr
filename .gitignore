@@ -5,3 +5,14 @@ build/
 *.log
 .expo/
 web/dist/
+data/
+uploads/
+whisper-cache/
+whisper-verbatim-merged/whisper-verbatim-merged/
+*.safetensors
+
+# Local Whisper model
+whisper-verbatim-merged/
+*.safetensors
+whisper-verbatim-merged/
+*.safetensors

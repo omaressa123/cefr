@@ -7,7 +7,6 @@ export const config = {
   corsOrigin: process.env.CORS_ORIGIN || "http://localhost:5173",
   allowPublicTeacherRegistration: process.env.ALLOW_PUBLIC_TEACHER_REGISTRATION === "true",
   databaseUrl: process.env.DATABASE_URL || "mysql://cefr:cefr_local_password@localhost:3306/cefr_practice_partner",
-  acpBaseUrl: process.env.ACP_BASE_URL || "",
 
   llm: {
     baseUrl: process.env.LLM_BASE_URL || "http://localhost:11434/v1",

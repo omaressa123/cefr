@@ -64,6 +64,8 @@ export const api = {
 
   getCohortReport: (classroomId) => request(`/classrooms/${classroomId}/report`),
 
+  getEngineStatus: () => request("/engine/status"),
+
   getCefrLevels: () => request("/cefr/levels"),
 
   listVocabulary: (params = {}) => request(`/vocabulary?${new URLSearchParams(params)}`),
@@ -143,7 +145,7 @@ export const api = {
 
   startQuiz: (skill, cefrLevel, limit = 5) => {
     if (!skill || !cefrLevel) throw new Error("Both skill and cefrLevel are required");
-    const validSkills = ["vocabulary", "grammar", "pronunciation", "sentence-structure"];
+    const validSkills = ["vocabulary", "grammar", "pronunciation", "sentence_structure", "speaking"];
     if (!validSkills.includes(skill)) throw new Error(`Invalid skill. Valid: ${validSkills.join(", ")}`);
     if (!Number.isInteger(limit) || limit <= 0) throw new Error("Limit must be a positive integer");
     return request("/quiz/start", { method: "POST", body: { skill, cefrLevel, limit } });

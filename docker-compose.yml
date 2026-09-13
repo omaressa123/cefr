@@ -20,6 +20,8 @@ services:
   api:
     build: ./backend
     restart: unless-stopped
+    ports:
+      - "4000:4000"
     env_file:
       - path: ./backend/.env
         required: false
@@ -29,10 +31,21 @@ services:
       PORT: 4000
       NODE_ENV: production
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
+      STT_BASE_URL: http://stt:7860
+      STT_MODEL: whisper-verbatim-merged
+      # Containerized Ollama (see the `ollama` service below). Service name,
+      # not localhost — same localhost-trap class of bug as STT_BASE_URL had.
+      LLM_BASE_URL: http://ollama:11434/v1
+      LLM_FAST_MODEL: qwen3:4b
+      LLM_HEAVY_MODEL: qwen3:4b
     depends_on:
       database:
         condition: service_healthy
-    command: sh -c "npm run migrate && npm start"
+      stt:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    command: sh -c "npm run migrate && npm run seed:learning && npm start"
     volumes:
       - ./data:/data
       - ./uploads:/uploads
@@ -46,6 +59,54 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+
+  stt:
+    build:
+      context: .
+      dockerfile: stt/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "7860:7860"
+    volumes:
+      - ./whisper-verbatim-merged:/models/whisper-verbatim-merged:ro
+    networks:
+      - private
+      - public
+    healthcheck:
+      # /health returns 200 even while still loading, so gate on loaded:true.
+      test: ["CMD-SHELL", "python -c \"import urllib.request,json; d=json.load(urllib.request.urlopen('http://localhost:7860/health')); raise SystemExit(0 if d.get('loaded') else 1)\""]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 180s
+
+  ollama:
+    image: ollama/ollama
+    restart: unless-stopped
+    environment:
+      # Bind all interfaces so sibling containers can reach the API.
+      OLLAMA_HOST: 0.0.0.0
+    volumes:
+      # Bind mount, matching the project's existing pattern
+      # (./data/database, ./data, ./uploads, ./backups). Persists pulled
+      # models across restarts so `ollama pull` is a first-boot-only cost.
+      - ./data/ollama:/root/.ollama
+      - ./ollama/entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: ["sh", "/entrypoint.sh"]
+    networks:
+      # private is internal:true (no registry egress for `ollama pull`), so
+      # ollama also joins public for egress — same dual-network setup as stt.
+      - private
+      - public
+    healthcheck:
+      # Gate on the required model actually being present, not just the
+      # daemon responding — `ollama show` exits non-zero until the pull
+      # in entrypoint.sh finishes.
+      test: ["CMD-SHELL", "ollama show qwen3:4b >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 10s
+      retries: 40
+      start_period: 600s
 
   web:
     build: ./web

@@ -150,6 +150,7 @@ export default function Quiz() {
             <option value="sentence_structure">
               Sentence structure
             </option>
+            <option value="speaking">Speaking</option>
           </select>
 
           <select

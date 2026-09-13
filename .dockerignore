@@ -1,0 +1,7 @@
+# Build context for the `stt` service is the repo root, so keep the build
+# context tiny: only the server script and its requirements. Everything else
+# (especially whisper-verbatim-merged/, data/database/, node_modules/) must
+# NOT be sent to the Docker daemon — the model is mounted at runtime instead.
+*
+!scripts/whisper-server.py
+!stt/requirements.txt

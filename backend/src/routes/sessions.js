@@ -74,31 +74,15 @@ router.post(
       );
       const turnIndex = countRows[0].n;
 
-      // If ACP is configured, send the raw audio directly — it runs Whisper
-      // locally and handles the full pipeline. Otherwise fall back to the
-      // cloud STT → processTurn path.
-      const { config } = await import("../config.js");
-      if (config.acpBaseUrl) {
-        const result = await processTurnAudio({
-          sessionId: session.id,
-          turnIndex,
-          audioBuffer: req.file.buffer,
-          mimeType: req.file.mimetype,
-          cefrLevel: session.cefr_level,
-        });
-        return res.json(result);
-      }
-
-      const transcript = await transcribe(req.file.buffer, req.file.mimetype);
-      const result = await processTurn({
+      const result = await processTurnAudio({
         sessionId: session.id,
         turnIndex,
-        transcript,
+        audioBuffer: req.file.buffer,
+        mimeType: req.file.mimetype,
         cefrLevel: session.cefr_level,
-        history: [],
       });
 
-      res.json({ transcript, ...result });
+      res.json(result);
     } catch (err) {
       next(err);
     }
