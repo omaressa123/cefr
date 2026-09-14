@@ -16,3 +16,5 @@ whisper-verbatim-merged/
 *.safetensors
 whisper-verbatim-merged/
 *.safetensors
+# On-device STT model (139MB, fetched out-of-band, never committed)
+backend/models/*.bin

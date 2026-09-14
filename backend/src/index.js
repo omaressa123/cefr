@@ -1,4 +1,6 @@
 import express from "express";
+import path from "path";
+import { fileURLToPath } from "url";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
@@ -44,6 +46,16 @@ app.get("/health", async (req, res) => {
 
 // Route: /api/v1/*  (mirrors the original FastAPI mount point)
 app.use("/api/v1", apiRouter);
+
+// On-demand hosting for the on-device STT model (mobile offline fallback).
+// Drop ggml-verbatim-small-q5_1.bin (Phase 2 pick, ~181 MB) into
+// OFFLINE_MODEL_DIR (default backend/models/, gitignored) or point
+// EXPO_PUBLIC_OFFLINE_STT_MODEL_URL at any other file host. The model file
+// is intentionally NOT committed.
+const offlineModelDir =
+  process.env.OFFLINE_MODEL_DIR ||
+  path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "models");
+app.use("/models", express.static(offlineModelDir, { dotfiles: "deny" }));
 
 app.use((err, req, res, next) => {
   console.error(`${req.method} ${req.originalUrl}: ${err.message}`);

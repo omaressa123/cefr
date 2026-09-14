@@ -1,8 +1,20 @@
 import React, { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from "react-native";
 import { Audio } from "expo-av";
-import { api } from "../api/client.js";
+import { api, ApiError } from "../api/client.js";
 import { colors } from "../theme/colors.js";
+import { useWavCapture } from "../stt/captureWav.js";
+import {
+  ensureOfflineModel,
+  transcribeOffline,
+  isOfflineSttSupported,
+  OFFLINE_MODEL_BYTES,
+} from "../stt/offlineStt.js";
+import {
+  enqueueOfflineTurn,
+  flushPendingTurns,
+  countPendingTurns,
+} from "../stt/offlineQueue.js";
 
 const LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"];
 
@@ -13,8 +25,12 @@ export default function PracticeSessionScreen({ route }) {
   const [turns, setTurns] = useState([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
-  const [recording, setRecording] = useState(null);
+  const [capturing, setCapturing] = useState(false);
+  const { startCapture, stopCapture } = useWavCapture();
   const [error, setError] = useState(null);
+  const [offlineNotice, setOfflineNotice] = useState(null);
+  const [modelProgress, setModelProgress] = useState(null);
+  const [pendingCount, setPendingCount] = useState(0);
   const [report, setReport] = useState(null);
   const [revealed, setRevealed] = useState({});
 
@@ -38,9 +54,53 @@ export default function PracticeSessionScreen({ route }) {
     }
   }
 
-  function appendTurn(result, studentText) {
-    setTurns((t) => [...t, { student: studentText, reply: result.replyText, errors: result.errors }]);
+  function appendTurn(result, studentText, extra = {}) {
+    setTurns((t) => [
+      ...t,
+      { student: studentText, reply: result.replyText, errors: result.errors, ...extra },
+    ]);
     if (result.audioBase64) playReplyAudio(result.audioBase64);
+  }
+
+  // Best-effort background sync: resubmit queued offline recordings so they
+  // receive retroactive grammar assessment, replacing the offline turns.
+  async function syncPendingTurns() {
+    try {
+      const { assessed } = await flushPendingTurns(api, (entry, result) => {
+        setTurns((t) =>
+          t.map((turn) =>
+            turn.pendingId === entry.id
+              ? { student: result.transcript, reply: result.replyText, errors: result.errors }
+              : turn
+          )
+        );
+      });
+      if (assessed.length > 0) setOfflineNotice(null);
+      setPendingCount(await countPendingTurns());
+    } catch {
+      // Sync is opportunistic; the queue survives for the next attempt.
+      setPendingCount(await countPendingTurns().catch(() => 0));
+    }
+  }
+
+  function isOfflineError(err) {
+    return err instanceof ApiError && (err.isNetworkError || err.isTimeout);
+  }
+
+  async function transcribeOfflineFallback(wavUri) {
+    if (!isOfflineSttSupported()) {
+      throw new Error("You're offline, and on-device transcription needs a dev-client build (Expo Go can't load it). Your recording was kept — reconnect to submit it.");
+    }
+    setModelProgress({ phase: "model" });
+    await ensureOfflineModel(({ bytesWritten, totalBytes }) => {
+      setModelProgress({ phase: "model", received: bytesWritten, total: totalBytes });
+    });
+    setModelProgress({ phase: "transcribing" });
+    try {
+      return await transcribeOffline(wavUri);
+    } finally {
+      setModelProgress(null);
+    }
   }
 
   async function submitText() {
@@ -59,32 +119,43 @@ export default function PracticeSessionScreen({ route }) {
   }
 
   async function toggleRecording() {
-    if (recording) {
+    if (capturing) {
       setSending(true);
+      setError(null);
       try {
-        await recording.stopAndUnloadAsync();
-        const uri = recording.getURI();
+        const { uri } = await stopCapture();
         const formData = new FormData();
-        formData.append("audio", { uri, name: "turn.m4a", type: "audio/m4a" });
-        const result = await api.submitAudioTurn(session.id, formData);
-        appendTurn(result, result.transcript);
+        formData.append("audio", { uri, name: "turn.wav", type: "audio/wav" });
+        try {
+          const result = await api.submitAudioTurn(session.id, formData);
+          appendTurn(result, result.transcript);
+          // Connection works: opportunistically assess queued offline turns.
+          syncPendingTurns();
+        } catch (err) {
+          if (!isOfflineError(err)) throw err;
+          const transcript = await transcribeOfflineFallback(uri);
+          const entry = await enqueueOfflineTurn({ sessionId: session.id, wavUri: uri, transcript });
+          appendTurn({ replyText: null, errors: null }, transcript, {
+            offline: true,
+            pendingId: entry.id,
+          });
+          setPendingCount(await countPendingTurns());
+          setOfflineNotice(
+            "You're offline — transcription only, no grammar feedback yet. This turn is saved and will be assessed when you reconnect."
+          );
+        }
       } catch (err) {
         setError(err.message);
       } finally {
-        setRecording(null);
+        setCapturing(false);
         setSending(false);
       }
       return;
     }
     try {
-      const perm = await Audio.requestPermissionsAsync();
-      if (!perm.granted) {
-        setError("Microphone permission was denied.");
-        return;
-      }
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      const { recording: rec } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
-      setRecording(rec);
+      await startCapture();
+      setCapturing(true);
+      setError(null);
     } catch (err) {
       setError(err.message);
     }
@@ -118,14 +189,45 @@ export default function PracticeSessionScreen({ route }) {
     <View style={styles.container}>
       <Text style={styles.pill}>Practicing at {session.cefr_level}</Text>
       {error && <Text style={styles.error}>{error}</Text>}
+      {offlineNotice && <Text style={styles.offlineBanner}>{offlineNotice}</Text>}
+      {modelProgress?.phase === "model" && (
+        <Text style={styles.offlineBanner}>
+          {modelProgress.total
+            ? `Downloading offline speech model… ${Math.round(
+                (100 * modelProgress.received) / modelProgress.total
+              )}% (${Math.round(modelProgress.received / 1e6)} of ${Math.round(
+                OFFLINE_MODEL_BYTES / 1e6
+              )} MB)`
+            : "Preparing offline speech model…"}
+        </Text>
+      )}
+      {modelProgress?.phase === "transcribing" && (
+        <Text style={styles.offlineBanner}>Transcribing on-device…</Text>
+      )}
+      {pendingCount > 0 && (
+        <TouchableOpacity
+          style={[styles.smallButton, { marginBottom: 12, alignItems: "center", paddingVertical: 10 }]}
+          onPress={syncPendingTurns}
+          disabled={sending}
+        >
+          <Text style={styles.buttonText}>
+            Sync {pendingCount} offline turn{pendingCount === 1 ? "" : "s"} for grammar feedback
+          </Text>
+        </TouchableOpacity>
+      )}
 
       <ScrollView style={{ flex: 1 }}>
         {turns.map((t, i) => (
           <View key={i} style={{ marginBottom: 18 }}>
             <Text style={{ color: colors.text, marginBottom: 4 }}>{t.student}</Text>
-            <Text style={{ color: colors.textMuted, borderLeftWidth: 2, borderLeftColor: colors.accentSoft, paddingLeft: 10 }}>
-              {t.reply}
-            </Text>
+            {t.offline && (
+              <Text style={styles.offlineBadge}>OFFLINE — grammar feedback pending</Text>
+            )}
+            {t.reply ? (
+              <Text style={{ color: colors.textMuted, borderLeftWidth: 2, borderLeftColor: colors.accentSoft, paddingLeft: 10 }}>
+                {t.reply}
+              </Text>
+            ) : null}
             {t.errors?.map((e, j) => {
               const key = `${i}:${j}`;
               const guided = e.guidedDiscovery && !revealed[key];
@@ -167,8 +269,8 @@ export default function PracticeSessionScreen({ route }) {
         <TouchableOpacity style={styles.smallButton} onPress={submitText} disabled={sending}>
           <Text style={styles.buttonText}>Send</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.smallButton, recording && { backgroundColor: colors.error }]} onPress={toggleRecording} disabled={sending}>
-          <Text style={styles.buttonText}>{recording ? "Stop" : "Speak"}</Text>
+        <TouchableOpacity style={[styles.smallButton, capturing && { backgroundColor: colors.error }]} onPress={toggleRecording} disabled={sending}>
+          <Text style={styles.buttonText}>{capturing ? "Stop" : "Speak"}</Text>
         </TouchableOpacity>
       </View>
 
@@ -234,5 +336,19 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     padding: 10,
     marginBottom: 12,
+  },
+  offlineBanner: {
+    color: "#F5A524",
+    borderWidth: 1,
+    borderColor: "#F5A524",
+    borderRadius: 6,
+    padding: 10,
+    marginBottom: 12,
+  },
+  offlineBadge: {
+    color: "#F5A524",
+    fontSize: 11,
+    fontWeight: "700",
+    marginBottom: 4,
   },
 });
