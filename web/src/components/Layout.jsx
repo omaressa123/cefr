@@ -1,10 +1,11 @@
-import React from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   Home, BookOpen, Headphones, Library, TrendingUp, User, Settings, Menu, X, Bell,
-  Mic, Volume2, ArrowLeft, HelpCircle, Play, Pause, Heart, Star, Check
+  Mic, Volume2, ArrowLeft, HelpCircle, Play, Pause, Heart, Star, Check, Palette, Sparkles
 } from "lucide-react";
 import { getStoredUser, setToken, setStoredUser } from "../api/client.js";
+import { useTheme } from "../context/ThemeContext.jsx";
 import "./Layout.css";
 
 const NAV_ITEMS = [
@@ -13,13 +14,83 @@ const NAV_ITEMS = [
   { to: "/scenarios", icon: BookOpen, label: "Scenarios" },
   { to: "/phrases", icon: Library, label: "Phrase Bank" },
   { to: "/progress", icon: TrendingUp, label: "Progress" },
+  { to: "/settings", icon: Settings, label: "Settings" },
 ];
+
+export function ThemeSwitcherDropdown() {
+  const { theme, setTheme, themes, currentThemeObj } = useTheme();
+  const [open, setOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div style={{ position: "relative" }} ref={dropdownRef}>
+      <button
+        type="button"
+        className="theme-switch-btn"
+        onClick={() => setOpen(!open)}
+        title="Change system color theme"
+        aria-label="Change theme"
+      >
+        <span
+          className="theme-color-dot"
+          style={{ backgroundColor: currentThemeObj.color, color: currentThemeObj.color }}
+        />
+        <span>{currentThemeObj.name}</span>
+        <Palette size={14} style={{ opacity: 0.7 }} />
+      </button>
+
+      {open && (
+        <div className="theme-dropdown">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 8px 8px", borderBottom: "1px solid var(--color-border)" }}>
+            <span style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--color-secondary-text)" }}>
+              Color Themes
+            </span>
+            <span style={{ fontSize: "10px", color: "var(--color-primary-purple)" }}>
+              Instant Preview
+            </span>
+          </div>
+          {themes.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className={`theme-option-row ${t.id === theme ? "active" : ""}`}
+              onClick={() => {
+                setTheme(t.id);
+                setOpen(false);
+              }}
+            >
+              <span
+                className="theme-color-dot"
+                style={{ backgroundColor: t.color, color: t.color }}
+              />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600 }}>{t.name}</div>
+                <div style={{ fontSize: "10px", color: "var(--color-secondary-text)" }}>{t.badge}</div>
+              </div>
+              {t.id === theme && <Check size={14} style={{ color: "var(--color-primary-purple)" }} />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Layout({ children, currentPage }) {
   const user = getStoredUser();
   const navigate = useNavigate();
-  const [sidebarOpen, setSidebarOpen] = React.useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  const { currentThemeObj, cycleTheme } = useTheme();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   function handleLogout() {
     setToken(null);
@@ -29,11 +100,41 @@ export default function Layout({ children, currentPage }) {
 
   function closeSidebar() {
     setSidebarOpen(false);
-    setMobileMenuOpen(false);
   }
 
   return (
     <div className="app-shell">
+      {/* Mobile Top Bar */}
+      <div className="mobile-header-bar" style={{
+        display: "none",
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        height: "56px",
+        background: "var(--color-dark-surface)",
+        borderBottom: "1px solid var(--color-border)",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0 16px",
+        zIndex: "var(--z-sidebar)",
+      }}>
+        <button
+          className="sidebar-toggle"
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          aria-label="Toggle navigation"
+          style={{ display: "flex", background: "none", border: "none", padding: "6px" }}
+        >
+          {sidebarOpen ? <X size={22} /> : <Menu size={22} />}
+        </button>
+
+        <div className="brand-text" style={{ fontSize: "1.1rem", fontWeight: 700 }}>
+          LingoLife
+        </div>
+
+        <ThemeSwitcherDropdown />
+      </div>
+
       <button
         className="sidebar-toggle"
         onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -42,12 +143,19 @@ export default function Layout({ children, currentPage }) {
         {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
       </button>
 
-      <aside className={`sidebar ${sidebarOpen ? 'mobile-open' : ''}`}>
+      <aside className={`sidebar ${sidebarOpen ? "mobile-open" : ""}`}>
         <div className="sidebar-brand" onClick={closeSidebar}>
           <div className="brand-icon">
             <span style={{ fontSize: "1.1rem", fontWeight: 800, color: "white" }}>L</span>
           </div>
-          <span className="brand-text">LingoLife</span>
+          <div style={{ flex: 1 }}>
+            <span className="brand-text">LingoLife</span>
+          </div>
+        </div>
+
+        {/* Theme Quick Switcher in Sidebar */}
+        <div style={{ padding: "0 8px 16px" }}>
+          <ThemeSwitcherDropdown />
         </div>
 
         <nav style={{ display: "flex", flexDirection: "column", gap: "2px", flex: 1 }}>
@@ -57,7 +165,7 @@ export default function Layout({ children, currentPage }) {
               to={to}
               end={to === "/"}
               onClick={closeSidebar}
-              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+              className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
             >
               <Icon size={18} className="nav-icon" />
               <span className="nav-label">{label}</span>
@@ -72,7 +180,7 @@ export default function Layout({ children, currentPage }) {
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--color-primary-text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {user?.displayName}
+                {user?.displayName || "Student"}
               </div>
               <div style={{ fontSize: "0.7rem", color: "var(--color-secondary-text)" }}>
                 {user?.role === "teacher" ? "Teacher" : "Student"}
@@ -91,13 +199,22 @@ export default function Layout({ children, currentPage }) {
           className="sidebar-overlay"
           onClick={closeSidebar}
           style={{
-            position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
-            zIndex: 49, display: "none" // desktop overlay handled by sidebar position
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            zIndex: 49,
+            display: "block",
           }}
         />
       )}
 
-      <main className="content">{children}</main>
+      <main className="content">
+        {/* Desktop Header bar with quick theme switcher */}
+        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", marginBottom: "1.5rem" }}>
+          <ThemeSwitcherDropdown />
+        </div>
+        {children}
+      </main>
     </div>
   );
 }
@@ -117,16 +234,16 @@ export function BottomNavigation({ currentPage }) {
       {MOBILE_ITEMS.map(({ to, icon: Icon, label }) => (
         <button
           key={to}
-          className={`bottom-nav-item ${currentPage === to ? 'active' : ''}`}
+          className={`bottom-nav-item ${currentPage === to ? "active" : ""}`}
           onClick={() => navigate(to)}
         >
           <Icon size={20} className="nav-icon" />
           <span style={{ fontSize: "10px", fontWeight: 500 }}>{label}</span>
         </button>
       ))}
-      <button className="bottom-nav-item" onClick={() => navigate('/profile')}>
-        <User size={20} className="nav-icon" />
-        <span style={{ fontSize: "10px", fontWeight: 500 }}>Profile</span>
+      <button className="bottom-nav-item" onClick={() => navigate("/settings")}>
+        <Settings size={20} className="nav-icon" />
+        <span style={{ fontSize: "10px", fontWeight: 500 }}>Settings</span>
       </button>
     </nav>
   );
@@ -209,28 +326,6 @@ export function ProgressIndicator({ value, max = 100, size = "md" }) {
   );
 }
 
-export function HelpBottomSheet({ levels, onClose }) {
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="bottom-sheet" onClick={e => e.stopPropagation()}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-6)" }}>
-          <h3 style={{ margin: 0 }}>I'm Stuck — Need Help?</h3>
-          <button className="btn btn-ghost" onClick={onClose} style={{ padding: "4px" }}><X size={20} /></button>
-        </div>
-        <p style={{ fontSize: "var(--text-caption)", color: "var(--color-secondary-text)", marginBottom: "var(--space-6)" }}>
-          Learning is okay. Mistakes are part of practice.
-        </p>
-        {levels.map((level, i) => (
-          <div key={i} className="help-level">
-            <h4>Level {i + 1}: {level.title}</h4>
-            <p>{level.content}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function FeedbackCard({ success, corrections, alternatives, phrase }) {
   return (
     <div className="feedback-card fade-in">
@@ -255,79 +350,6 @@ export function FeedbackCard({ success, corrections, alternatives, phrase }) {
           <p style={{ margin: "4px 0 0", fontSize: "var(--text-body)", color: "var(--color-primary-text)" }}>{phrase}</p>
         </div>
       )}
-    </div>
-  );
-}
-
-export function PhraseCard({ phrase, meaning, category, onPlay, onPractice, onMark }) {
-  return (
-    <div className="phrase-card panel-hover">
-      <div style={{ flex: 1 }}>
-        <div className="phrase" style={{ fontSize: "var(--text-body)", fontWeight: 500 }}>{phrase}</div>
-        <div className="meaning">{meaning}</div>
-        <div style={{ marginTop: "4px" }}><Badge variant="info">{category}</Badge></div>
-      </div>
-      <div style={{ display: "flex", gap: "8px" }}>
-        <button className="btn btn-ghost" style={{ padding: "8px", minWidth: "36px" }} onClick={onPlay}><Volume2 size={16} /></button>
-        <button className="btn btn-ghost" style={{ padding: "8px", minWidth: "36px" }} onClick={onPractice}><Play size={16} /></button>
-        {onMark && <button className="btn btn-ghost" style={{ padding: "8px", minWidth: "36px" }} onClick={onMark}><Heart size={16} /></button>}
-      </div>
-    </div>
-  );
-}
-
-export function ScenarioCard({ icon, title, description, duration, difficulty, onClick }) {
-  return (
-    <div className="scenario-card panel-hover" onClick={onClick}>
-      <div className="scenario-card-icon">{icon}</div>
-      <h3>{title}</h3>
-      <p>{description}</p>
-      <div className="scenario-card-meta">
-        <span className="scenario-card-duration">{duration}</span>
-        {difficulty && <Badge variant={difficulty === "Beginner" ? "success" : difficulty === "Intermediate" ? "warning" : "error"}>{difficulty}</Badge>}
-      </div>
-    </div>
-  );
-}
-
-export function VoiceRecorder({ isRecording, onStart, onStop, duration, onError }) {
-  return (
-    <button
-      className={`voice-btn ${isRecording ? 'recording' : ''}`}
-      onClick={isRecording ? onStop : onStart}
-      aria-label={isRecording ? "Stop recording" : "Start recording"}
-    >
-      {isRecording ? <Pause size={20} /> : <Mic size={20} />}
-    </button>
-  );
-}
-
-export function ConversationBubble({ speaker, message, type = "ai", audioUrl }) {
-  return (
-    <div className={`message-bubble ${type}`}>
-      <span className={`speaker ${type === 'ai' ? 'ai-speaker' : 'user-speaker'}`}>
-        {speaker}
-      </span>
-      <p style={{ margin: 0 }}>{message}</p>
-      {audioUrl && type === "ai" && (
-        <div className="audio-player" style={{ marginTop: "8px" }}>
-          <button className="play-btn"><Play size={12} /></button>
-          <span>Listen</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export function TypingIndicator() {
-  return (
-    <div className="message-bubble ai">
-      <div className="typing-indicator">
-        <div className="typing-dot" />
-        <div className="typing-dot" />
-        <div className="typing-dot" />
-        <span style={{ marginLeft: "8px" }}>Thinking...</span>
-      </div>
     </div>
   );
 }
