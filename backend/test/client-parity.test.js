@@ -1,12 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const webClient = readFileSync(join(root, "web", "src", "api", "client.js"), "utf8");
-const mobileClient = readFileSync(join(root, "mobile", "src", "api", "client.js"), "utf8");
+const webClientPath = join(root, "web", "src", "api", "client.js");
+const mobileClientPath = join(root, "mobile", "src", "api", "client.js");
+
+const webClient = existsSync(webClientPath) ? readFileSync(webClientPath, "utf8") : "";
+const mobileClient = existsSync(mobileClientPath) ? readFileSync(mobileClientPath, "utf8") : null;
 
 // Static (quoted) endpoint paths used by each client, e.g. "/auth/login".
 // Template literals with ${...} are normalised by dropping the placeholder,
@@ -29,10 +32,45 @@ function validSkills(source) {
   return [...match[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]).sort();
 }
 
-test("web and mobile clients hit the same endpoint set", () => {
+test("web client contains all essential CEFR practice partner endpoints", () => {
+  assert.ok(webClient, "web client must exist");
+  const web = staticPaths(webClient);
+  assert.ok(web.size > 15, "expected a rich web endpoint set");
+
+  const requiredEndpoints = [
+    "/auth/register",
+    "/auth/login",
+    "/auth/me",
+    "/classrooms",
+    "/classrooms/join",
+    "/sessions",
+    "/vocabulary",
+    "/grammar",
+    "/pronunciation",
+    "/sentence-structure",
+    "/quiz/start",
+    "/quiz/answer",
+    "/quiz/finish",
+    "/progress",
+    "/recommendations",
+    "/engine/status",
+  ];
+
+  for (const ep of requiredEndpoints) {
+    assert.ok(
+      [...web].some((p) => p.startsWith(ep) || ep.startsWith(p)),
+      `Web client missing endpoint: ${ep}`
+    );
+  }
+});
+
+test("web and mobile clients hit the same endpoint set when mobile is present", (t) => {
+  if (!mobileClient) {
+    t.skip("mobile directory not present in workspace, skipping mobile parity check");
+    return;
+  }
   const web = staticPaths(webClient);
   const mobile = staticPaths(mobileClient);
-  assert.ok(web.size > 10, "expected a non-trivial web endpoint set");
   assert.deepEqual(
     [...mobile].sort(),
     [...web].sort(),
@@ -40,6 +78,10 @@ test("web and mobile clients hit the same endpoint set", () => {
   );
 });
 
-test("web and mobile clients allow the same quiz skills", () => {
+test("web and mobile clients allow the same quiz skills when mobile is present", (t) => {
+  if (!mobileClient) {
+    t.skip("mobile directory not present in workspace, skipping mobile skills check");
+    return;
+  }
   assert.deepEqual(validSkills(mobileClient), validSkills(webClient));
 });

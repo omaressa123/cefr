@@ -163,7 +163,7 @@ export const api = {
 
   getProgress: async () => {
     const data = await request("/progress");
-    return Array.isArray(data) ? data : [data];
+    return Array.isArray(data) ? data[0] : data;
   },
 
   getRecommendations: async () => {

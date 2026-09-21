@@ -18,6 +18,7 @@ import Quiz from "./pages/Quiz.jsx";
 import LearningProgress from "./pages/LearningProgress.jsx";
 import PhraseBank from "./pages/PhraseBank.jsx";
 import Settings from "./pages/Settings.jsx";
+import TypographyTool from "./pages/TypographyTool/TypographyTool.jsx";
 import { getStoredUser } from "./api/client.js";
 
 function RequireAuth({ children }) {
@@ -144,6 +145,12 @@ export default function App() {
       <Route path="/settings" element={
         <RequireAuth>
           <AppLayout currentPage="/settings"><Settings /></AppLayout>
+        </RequireAuth>
+      } />
+
+      <Route path="/typography" element={
+        <RequireAuth>
+          <AppLayout currentPage="/typography"><TypographyTool /></AppLayout>
         </RequireAuth>
       } />
 

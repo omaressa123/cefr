@@ -17,7 +17,7 @@ export default function LearningDashboard() {
   const [progress, setProgress] = useState(null);
   const [recommendations, setRecommendations] = useState([]);
   const [error, setError] = useState(null);
-  useEffect(() => { Promise.all([api.getProgress(), api.getRecommendations()]).then(([p, r]) => { setProgress(p); setRecommendations(r); }).catch((err) => setError(err.message)); }, []);
+  useEffect(() => { Promise.all([api.getProgress(), api.getRecommendations()]).then(([p, r]) => { setProgress(Array.isArray(p) ? p[0] : p); setRecommendations(Array.isArray(r) ? r : []); }).catch((err) => setError(err.message)); }, []);
   return <Layout>
     <div className="eyebrow">CEFR learning system</div>
     <h1>Build your English, level by level.</h1>
