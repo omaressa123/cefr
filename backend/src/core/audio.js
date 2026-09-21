@@ -12,6 +12,34 @@ import { MsEdgeTTS, OUTPUT_FORMAT } from "msedge-tts";
 // transcribe morphological errors verbatim rather than "fixing" them.
 const WHISPER_CONDITIONING_PROMPT = "Umm, well, he don't like it. I goed to the store...";
 
+// Map MIME types to file extensions so the STT server picks the right decoder.
+// Whisper implementations often use the filename extension rather than
+// Content-Type when deciding how to decode the upload. Bug 8 fix: WAV
+// uploads from Android/iOS were previously sent as "audio.webm", causing
+// silent decode failures on servers that key off the extension.
+const MIME_TO_EXT = {
+  "audio/wav": "wav",
+  "audio/x-wav": "wav",
+  "audio/wave": "wav",
+  "audio/webm": "webm",
+  "audio/ogg": "ogg",
+  "audio/mpeg": "mp3",
+  "audio/mp4": "m4a",
+  "audio/aac": "aac",
+  "audio/mp3": "mp3",
+};
+
+function extForMime(mimeType) {
+  if (!mimeType) return "webm";
+  const base = mimeType.split(";")[0].trim().toLowerCase();
+  return MIME_TO_EXT[base] || "webm";
+}
+
+// Bug 9 fix: add a configurable timeout so the backend never hangs waiting
+// for an unresponsive STT service. Default is 90 s — enough for Whisper-large
+// on modest hardware, still fast enough to surface a real error.
+const STT_TIMEOUT_MS = parseInt(process.env.STT_TIMEOUT_MS || "90000", 10);
+
 export async function transcribe(audioBuffer, mimeType = "audio/webm") {
   if (!config.stt.baseUrl) {
     throw new Error(
@@ -19,8 +47,11 @@ export async function transcribe(audioBuffer, mimeType = "audio/webm") {
     );
   }
 
+  const ext = extForMime(mimeType);
+  const filename = `audio.${ext}`;
+
   const form = new FormData();
-  form.append("file", new Blob([audioBuffer], { type: mimeType }), "audio.webm");
+  form.append("file", new Blob([audioBuffer], { type: mimeType }), filename);
   form.append("model", config.stt.model);
   form.append("prompt", WHISPER_CONDITIONING_PROMPT);
 
@@ -29,11 +60,25 @@ export async function transcribe(audioBuffer, mimeType = "audio/webm") {
     headers.Authorization = `Bearer ${config.stt.apiKey}`;
   }
 
-  const res = await fetch(`${config.stt.baseUrl.replace(/\/$/, "")}/audio/transcriptions`, {
-    method: "POST",
-    headers,
-    body: form,
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), STT_TIMEOUT_MS);
+
+  let res;
+  try {
+    res = await fetch(`${config.stt.baseUrl.replace(/\/$/, "")}/audio/transcriptions`, {
+      method: "POST",
+      headers,
+      body: form,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err.name === "AbortError") {
+      throw new Error(`STT request timed out after ${STT_TIMEOUT_MS / 1000}s — is the STT service running?`);
+    }
+    throw new Error(`STT network error: ${err.message}`);
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");

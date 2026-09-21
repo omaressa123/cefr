@@ -1,7 +1,10 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
 import { api, setToken, setStoredUser } from "../api/client.js";
 import { colors } from "../theme/colors.js";
+import { theme } from "../theme/index.js";
+import Input from "../components/ui/Input.jsx";
+import Button from "../components/ui/Button.jsx";
 
 export default function LoginScreen({ navigation }) {
   const [username, setUsername] = useState("");
@@ -11,12 +14,12 @@ export default function LoginScreen({ navigation }) {
 
   async function handleLogin() {
     setError(null);
-    setLoading(true);
+    setLoading(false);
     try {
       const { token, user } = await api.login({ username, password });
       await setToken(token);
       await setStoredUser(user);
-      navigation.reset({ index: 0, routes: [{ name: "Dashboard" }] });
+      navigation.reset({ index: 0, routes: [{ name: "Main" }] });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -30,15 +33,10 @@ export default function LoginScreen({ navigation }) {
       <Text style={styles.subtitle}>Log in to keep practicing.</Text>
       {error && <Text style={styles.error}>{error}</Text>}
 
-      <Text style={styles.label}>Username</Text>
-      <TextInput style={styles.input} value={username} onChangeText={setUsername} autoCapitalize="none" />
+      <Input label="Username" value={username} onChangeText={setUsername} placeholder="Enter username" autoCapitalize="none" style={styles.input} />
+      <Input label="Password" value={password} onChangeText={setPassword} placeholder="Enter password" secureTextEntry style={styles.input} />
 
-      <Text style={styles.label}>Password</Text>
-      <TextInput style={styles.input} value={password} onChangeText={setPassword} secureTextEntry />
-
-      <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
-        <Text style={styles.buttonText}>{loading ? "Logging in..." : "Log in"}</Text>
-      </TouchableOpacity>
+      <Button title={loading ? "Logging in..." : "Log in"} onPress={handleLogin} disabled={loading} style={styles.button} />
 
       <TouchableOpacity onPress={() => navigation.navigate("Register")}>
         <Text style={styles.link}>New here? Create an account</Text>
@@ -48,33 +46,11 @@ export default function LoginScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: 24, justifyContent: "center" },
-  title: { fontSize: 28, fontWeight: "700", color: colors.text, marginBottom: 4 },
-  subtitle: { color: colors.textMuted, marginBottom: 24 },
-  label: { color: colors.textFaint, fontSize: 12, marginBottom: 6, marginTop: 14 },
-  input: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 6,
-    padding: 12,
-    color: colors.text,
-  },
-  button: {
-    backgroundColor: colors.accent,
-    borderRadius: 6,
-    padding: 14,
-    alignItems: "center",
-    marginTop: 24,
-  },
-  buttonText: { color: colors.bg, fontWeight: "700" },
-  link: { color: colors.accentStrong, marginTop: 18, textAlign: "center" },
-  error: {
-    color: colors.error,
-    borderWidth: 1,
-    borderColor: colors.error,
-    borderRadius: 6,
-    padding: 10,
-    marginBottom: 12,
-  },
+  container: { flex: 1, backgroundColor: colors.bg, padding: theme.spacing.xxl, justifyContent: "center" },
+  title: { fontSize: theme.fontSize.xxl, fontWeight: theme.fontWeight.bold, color: colors.text, marginBottom: theme.spacing.xs },
+  subtitle: { color: colors.textMuted, fontSize: theme.fontSize.md, marginBottom: theme.spacing.xxl },
+  input: { marginBottom: theme.spacing.md },
+  button: { marginTop: theme.spacing.md },
+  link: { color: colors.accentStrong, marginTop: theme.spacing.lg, textAlign: "center", fontSize: theme.fontSize.md },
+  error: { color: colors.error, backgroundColor: "#2E1A1F", borderRadius: theme.borderRadius.sm, padding: theme.spacing.md, marginBottom: theme.spacing.md },
 });

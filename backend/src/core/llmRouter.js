@@ -1,6 +1,11 @@
 import { config } from "../config.js";
 import { ERROR_CATEGORIES } from "./taxonomy.js";
 
+// Bug 9 fix: configurable timeout for LLM calls. Default 60 s is enough for
+// most local models (Ollama/vLLM) but will surface an error rather than
+// hanging the HTTP connection indefinitely.
+const LLM_TIMEOUT_MS = parseInt(process.env.LLM_TIMEOUT_MS || "60000", 10);
+
 // --- Generic OpenAI-compatible chat completion caller -------------------
 // This is deliberately provider-agnostic: point LLM_BASE_URL / LLM_API_KEY
 // at Groq, a local Ollama/vLLM OpenAI-compat shim, or anything else that
@@ -19,16 +24,30 @@ async function callChat({ baseUrl, apiKey, model, messages, temperature, jsonMod
     headers.Authorization = `Bearer ${apiKey}`;
   }
 
-  const res = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature,
-      ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
-    }),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
+
+  let res;
+  try {
+    res = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature,
+        ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err.name === "AbortError") {
+      throw new Error(`LLM request timed out after ${LLM_TIMEOUT_MS / 1000}s`);
+    }
+    throw new Error(`LLM network error: ${err.message}`);
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");

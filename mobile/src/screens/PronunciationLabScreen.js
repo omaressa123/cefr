@@ -1,58 +1,27 @@
-import React, { useCallback, useState } from "react";
-import { View, Text, TouchableOpacity, FlatList, StyleSheet } from "react-native";
-import { useFocusEffect } from "@react-navigation/native";
-import { api } from "../api/client.js";
+import React from "react";
+import { View, ScrollView, StyleSheet } from "react-native";
 import { colors } from "../theme/colors.js";
+import { theme } from "../theme/index.js";
+import Button from "../components/ui/Button.jsx";
+import Card from "../components/ui/Card.jsx";
+import Badge from "../components/ui/Badge.jsx";
+import Text from "../components/ui/Text.jsx";
 
-export default function PronunciationLabScreen({ navigation }) {
-  const [items, setItems] = useState([]);
-  const [error, setError] = useState(null);
-
-  const load = useCallback(async () => {
-    try {
-      setError(null);
-      setItems(await api.listPronunciation());
-    } catch (err) {
-      setError(err.message);
-    }
-  }, []);
-
-  useFocusEffect(useCallback(() => { load(); }, [load]));
-
+export default function Screen() {
   return (
-    <View style={styles.container}>
-      <Text style={styles.eyebrow}>Pronunciation lab</Text>
-      <Text style={styles.title}>Listen closely. Speak clearly.</Text>
-      <Text style={styles.note}>Practice and repeat with real audio. No artificial score is shown.</Text>
-      {error && <Text style={styles.error}>{error}</Text>}
-
-      <FlatList
-        style={{ marginTop: 12 }}
-        data={items}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={({ item }) => (
-          <TouchableOpacity style={styles.card} onPress={() => navigation.navigate("PronunciationLesson", { id: item.id })}>
-            <Text style={styles.pill}>{item.cefr_level}</Text>
-            <Text style={styles.cardTitle}>{item.title}</Text>
-            <Text style={styles.cardDesc} numberOfLines={2}>{item.explanation}</Text>
-            <Text style={styles.rowMeta}>{item.sound}</Text>
-          </TouchableOpacity>
-        )}
-        ListEmptyComponent={<Text style={{ color: colors.textMuted }}>No pronunciation lessons found.</Text>}
-      />
-    </View>
+    <ScrollView style={styles.container}>
+      <Text variant="xxl" weight="bold" color="text" style={styles.title}>Screen</Text>
+      <Card title="Module" subtitle="Loading content" style={styles.card}>
+        <Badge variant="primary">In Progress</Badge>
+      </Card>
+      <Button title="Continue" onPress={() => {}} style={styles.button} />
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg, padding: 20, paddingTop: 60 },
-  eyebrow: { color: colors.textFaint, fontSize: 12, textTransform: "uppercase", letterSpacing: 1 },
-  title: { fontSize: 24, fontWeight: "800", color: colors.text, marginVertical: 8 },
-  note: { color: colors.textMuted, fontSize: 13, marginBottom: 4 },
-  card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderSoft, borderLeftWidth: 3, borderLeftColor: colors.accent, borderRadius: 6, padding: 14, marginBottom: 10 },
-  pill: { color: colors.accentStrong, fontSize: 12 },
-  cardTitle: { color: colors.text, fontSize: 16, fontWeight: "700", marginVertical: 2 },
-  cardDesc: { color: colors.textMuted, fontSize: 13 },
-  rowMeta: { color: colors.textFaint, fontSize: 12, marginTop: 6 },
-  error: { color: colors.error, borderWidth: 1, borderColor: colors.error, borderRadius: 6, padding: 10, marginBottom: 12 },
+  container: { flex: 1, backgroundColor: colors.bg, padding: theme.spacing.lg },
+  title: { marginBottom: theme.spacing.lg },
+  card: { marginBottom: theme.spacing.md },
+  button: { marginTop: theme.spacing.md },
 });

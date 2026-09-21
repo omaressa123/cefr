@@ -7,13 +7,20 @@
     "userInterfaceStyle": "dark",
     "backgroundColor": "#100E1A",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.cefrpracticepartner.app"
     },
     "android": {
       "package": "com.cefrpracticepartner.app",
       "adaptiveIcon": {
         "backgroundColor": "#100E1A"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
     },
     "plugins": [
       "expo-status-bar",

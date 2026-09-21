@@ -31,11 +31,30 @@ function applyPedagogicalMode(errors, cefrLevel) {
   }));
 }
 
+// Bug 10 fix: load prior exchanges from the DB and build an OpenAI-compatible
+// history array so the conversational reply LLM has full context. Without
+// this every AI reply started fresh with no memory of the conversation.
+async function loadHistory(sessionId) {
+  const [rows] = await pool.query(
+    `SELECT student_text, ai_reply FROM exchanges WHERE session_id = ? ORDER BY turn_index ASC`,
+    [sessionId]
+  );
+  const history = [];
+  for (const row of rows) {
+    history.push({ role: "user", content: row.student_text });
+    history.push({ role: "assistant", content: row.ai_reply });
+  }
+  return history;
+}
+
 // Turn orchestrator: generates conversational reply and grammar assessment
 // concurrently, synthesizes TTS audio, applies verbatim guardrails, and persists.
 export async function processTurn({ sessionId, turnIndex, transcript, cefrLevel, history }) {
+  // If caller did not provide history (e.g. audio path), load it from DB.
+  const resolvedHistory = history ?? (await loadHistory(sessionId));
+
   const [replySettled, assessmentSettled] = await Promise.allSettled([
-    generateConversationalReply({ transcript, cefrLevel, history }),
+    generateConversationalReply({ transcript, cefrLevel, history: resolvedHistory }),
     analyzeGrammar({ transcript, cefrLevel }),
   ]);
 
@@ -76,10 +95,11 @@ export async function processTurn({ sessionId, turnIndex, transcript, cefrLevel,
 }
 
 // Transcribes audio with the configured STT provider (e.g. local verbatim-Whisper
-// or cloud Whisper), then runs turn processing.
+// or cloud Whisper), then runs turn processing. History is loaded inside
+// processTurn (history: undefined triggers the DB load path).
 export async function processTurnAudio({ sessionId, turnIndex, audioBuffer, mimeType, cefrLevel }) {
   const transcript = await transcribe(audioBuffer, mimeType);
-  const result = await processTurn({ sessionId, turnIndex, transcript, cefrLevel, history: [] });
+  const result = await processTurn({ sessionId, turnIndex, transcript, cefrLevel });
   return { transcript, ...result };
 }
 
