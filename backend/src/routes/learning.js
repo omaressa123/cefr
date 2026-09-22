@@ -10,6 +10,7 @@ import {
   overallPercent,
   summarizeLevels,
 } from "../core/progress.js";
+import { normalizePhraseRow, validatePhraseInput } from "../core/phrases.js";
 
 const router = Router();
 const levels = ["A1", "A2", "B1", "B2", "C1", "C2"];
@@ -278,6 +279,90 @@ router.post("/quiz/finish", requireAuth, async (req, res, next) => {
     const [rows] = await pool.query(`SELECT COUNT(*) AS attempts, COALESCE(SUM(is_correct), 0) AS correct FROM quiz_attempts WHERE user_id = ? AND question_id IN (${placeholders})`, [req.user.sub, ...questionIds]);
     const score = rows[0].attempts ? Math.round((rows[0].correct / rows[0].attempts) * 100) : 0;
     res.json({ attempts: rows[0].attempts, correct: rows[0].correct, score });
+  } catch (error) { next(error); }
+});
+
+// ---- Phrases: dynamic bank backed by MySQL (port 3306) ----
+router.get("/phrases", requireAuth, async (req, res, next) => {
+  try {
+    const filters = [];
+    const params = [req.user.sub];
+    if (req.query.category && req.query.category !== "All") {
+      filters.push("p.category = ?");
+      params.push(req.query.category);
+    }
+    if (req.query.level && req.query.level !== "All") {
+      if (!validateLevel(req.query.level)) return res.status(400).json({ error: "Invalid CEFR level" });
+      filters.push("p.cefr_level = ?");
+      params.push(req.query.level);
+    }
+    const search = String(req.query.search || "").trim().replace(/[%_]/g, "\\$&");
+    if (search) {
+      filters.push("(p.phrase LIKE ? OR p.meaning LIKE ?)");
+      params.push(`%${search}%`, `%${search}%`);
+    }
+    if (req.query.favorites === "true") filters.push("pf.id IS NOT NULL");
+    const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+    const [rows] = await pool.query(
+      `SELECT p.*, pf.id AS favorite_id
+       FROM phrases p LEFT JOIN phrase_favorites pf ON pf.phrase_id = p.id AND pf.user_id = ?
+       ${where} ORDER BY p.created_at DESC, p.phrase ASC LIMIT 200`,
+      params,
+    );
+    res.json({ items: rows.map(normalizePhraseRow) });
+  } catch (error) { next(error); }
+});
+
+router.get("/phrases/categories", requireAuth, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT p.category AS name, COUNT(*) AS count FROM phrases p GROUP BY p.category ORDER BY p.category ASC`,
+    );
+    const total = rows.reduce((sum, row) => sum + Number(row.count), 0);
+    res.json({ total, categories: rows.map((row) => ({ name: row.name, count: Number(row.count) })) });
+  } catch (error) { next(error); }
+});
+
+router.post("/phrases", requireAuth, async (req, res, next) => {
+  try {
+    const { valid, errors, value } = validatePhraseInput(req.body);
+    if (!valid) return res.status(400).json({ error: errors[0], details: errors });
+    const id = uuid();
+    await pool.query(
+      `INSERT INTO phrases (id, phrase, meaning, category, cefr_level, created_by)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, value.phrase, value.meaning, value.category, value.cefr_level, req.user.sub],
+    );
+    const [rows] = await pool.query(
+      `SELECT p.*, NULL AS favorite_id FROM phrases p WHERE p.id = ?`, [id],
+    );
+    res.status(201).json(normalizePhraseRow(rows[0]));
+  } catch (error) { next(error); }
+});
+
+router.post("/phrases/:id/favorite", requireAuth, async (req, res, next) => {
+  try {
+    const favorite = req.body?.favorite !== false;
+    const [rows] = await pool.query(`SELECT id FROM phrases WHERE id = ?`, [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: "Phrase not found" });
+    if (favorite) {
+      await pool.query(`INSERT IGNORE INTO phrase_favorites (id, user_id, phrase_id) VALUES (?, ?, ?)`, [uuid(), req.user.sub, req.params.id]);
+    } else {
+      await pool.query(`DELETE FROM phrase_favorites WHERE user_id = ? AND phrase_id = ?`, [req.user.sub, req.params.id]);
+    }
+    res.json({ favorite });
+  } catch (error) { next(error); }
+});
+
+router.delete("/phrases/:id", requireAuth, async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(`SELECT created_by FROM phrases WHERE id = ?`, [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: "Phrase not found" });
+    if (rows[0].created_by !== req.user.sub) {
+      return res.status(403).json({ error: "Only your own phrases can be deleted" });
+    }
+    await pool.query(`DELETE FROM phrases WHERE id = ?`, [req.params.id]);
+    res.json({ deleted: true });
   } catch (error) { next(error); }
 });
 

@@ -7,6 +7,24 @@ export const levels = [
   { code: "C2", title: "Proficient", description: "Nuanced, fluent language with register and stylistic control.", sortOrder: 6 },
 ];
 
+export const phrases = [
+  { phrase: "Break the ice", meaning: "To start a conversation in a social situation", category: "Social", level: "A2" },
+  { phrase: "Hit the nail on the head", meaning: "To describe exactly what is causing a situation or problem", category: "Idioms", level: "B1" },
+  { phrase: "Let's touch base", meaning: "To connect with someone at a later time", category: "Business", level: "B1" },
+  { phrase: "I'm feeling under the weather", meaning: "To feel sick or unwell", category: "Daily", level: "A2" },
+  { phrase: "The ball is in your court", meaning: "It's your decision or turn to act", category: "Idioms", level: "B2" },
+  { phrase: "Can you elaborate?", meaning: "Could you explain more in detail?", category: "Academic", level: "C1" },
+  { phrase: "It's a piece of cake", meaning: "Something is very easy to do", category: "Idioms", level: "A2" },
+  { phrase: "I'd like to follow up", meaning: "To continue or revisit a topic later", category: "Business", level: "B1" },
+  { phrase: "On the same page", meaning: "To have the same understanding or opinion", category: "Business", level: "B2" },
+  { phrase: "Could you clarify that?", meaning: "Can you make that clearer?", category: "Academic", level: "B1" },
+  { phrase: "I'm on board", meaning: "I agree or I'm ready to participate", category: "Daily", level: "A2" },
+  { phrase: "That's a good point", meaning: "I acknowledge what you said is valid", category: "Social", level: "B1" },
+  { phrase: "Let's dive in", meaning: "Let's start working on something", category: "Business", level: "A2" },
+  { phrase: "Time flies when you're having fun", meaning: "Time passes quickly when you enjoy yourself", category: "Daily", level: "A1" },
+  { phrase: "The early bird catches the worm", meaning: "Being early gives you an advantage", category: "Idioms", level: "A2" },
+];
+
 export const categories = [
   { slug: "everyday-life", name: "Everyday Life" },
   { slug: "family", name: "Family" },

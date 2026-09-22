@@ -175,4 +175,21 @@ export const api = {
     const data = await request(`/activity?limit=${limit}`);
     return Array.isArray(data) ? data : data?.activity ?? data?.data ?? [];
   },
+
+  listPhrases: async (params = {}) => {
+    const data = await request(`/phrases?${new URLSearchParams(params)}`);
+    return Array.isArray(data) ? data : data?.items ?? [];
+  },
+
+  getPhraseCategories: async () => {
+    const data = await request("/phrases/categories");
+    return data;
+  },
+
+  createPhrase: (payload) => request("/phrases", { method: "POST", body: payload }),
+
+  favoritePhrase: (id, favorite) =>
+    request(`/phrases/${id}/favorite`, { method: "POST", body: { favorite } }),
+
+  deletePhrase: (id) => request(`/phrases/${id}`, { method: "DELETE" }),
 };

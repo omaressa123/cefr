@@ -371,6 +371,27 @@ CREATE TABLE IF NOT EXISTS quiz_attempts (
     CONSTRAINT fk_quiz_attempt_question FOREIGN KEY (question_id) REFERENCES quiz_questions(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS phrases (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    phrase VARCHAR(255) NOT NULL,
+    meaning TEXT NOT NULL,
+    category VARCHAR(100) NOT NULL DEFAULT 'Daily',
+    cefr_level ENUM('A1', 'A2', 'B1', 'B2', 'C1', 'C2') NOT NULL DEFAULT 'A2',
+    created_by CHAR(36) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_phrase_creator FOREIGN KEY (created_by) REFERENCES profiles(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS phrase_favorites (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    user_id CHAR(36) NOT NULL,
+    phrase_id CHAR(36) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_phrase_favorite (user_id, phrase_id),
+    CONSTRAINT fk_phrase_favorite_user FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE,
+    CONSTRAINT fk_phrase_favorite_phrase FOREIGN KEY (phrase_id) REFERENCES phrases(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS user_skill_progress (
     id CHAR(36) NOT NULL PRIMARY KEY,
     user_id CHAR(36) NOT NULL,

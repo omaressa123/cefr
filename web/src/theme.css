@@ -1268,6 +1268,51 @@ p.example, .example {
   }
 }
 
+.phrase-add-row { display: flex; justify-content: flex-start; }
+.phrase-add-toggle { flex: 0 0 auto; }
+
+.phrase-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+.phrase-add-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px auto;
+  gap: var(--space-3);
+}
+.phrase-add-meta button { white-space: nowrap; }
+
+.phrase-actions { display: inline-flex; align-items: center; gap: var(--space-2); flex: 0 0 auto; }
+.phrase-del-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  box-shadow: none;
+  color: var(--color-secondary-text);
+  transition: all var(--duration-fast) var(--ease-out);
+}
+.phrase-del-btn:hover:not(:disabled) {
+  border-color: var(--color-error);
+  color: var(--color-error);
+  filter: none;
+  box-shadow: none;
+  transform: scale(1.06);
+}
+
+@media (max-width: 640px) {
+  .phrase-add-meta { grid-template-columns: 1fr; }
+}
+
 /* ====== PHRASE BANK ====== */
 .phrase-bank { max-width: 1000px; }
 

@@ -1,6 +1,6 @@
 import { v5 as uuid } from "uuid";
 import { pool } from "./pool.js";
-import { categories, grammar, levels, pronunciation, quizQuestions, sentenceTopics, vocabulary } from "../content/seedData.js";
+import { categories, grammar, levels, phrases, pronunciation, quizQuestions, sentenceTopics, vocabulary } from "../content/seedData.js";
 
 const NAMESPACE = "3d0c7b8e-9c3a-4f8c-9b09-8f4bf91e30dc";
 const idFor = (kind, key) => uuid(`${kind}:${key}`, NAMESPACE);
@@ -93,8 +93,17 @@ async function seed() {
       );
     }
 
+    for (const item of phrases) {
+      await connection.query(
+        `INSERT INTO phrases (id, phrase, meaning, category, cefr_level, created_by)
+         VALUES (?, ?, ?, ?, ?, NULL)
+         ON DUPLICATE KEY UPDATE meaning = VALUES(meaning), category = VALUES(category), cefr_level = VALUES(cefr_level)`,
+        [idFor("phrase", item.phrase), item.phrase, item.meaning, item.category, item.level],
+      );
+    }
+
     await connection.commit();
-    console.log(`Seeded ${vocabulary.length} vocabulary items, ${grammar.length} grammar topics, ${pronunciation.length} pronunciation lessons, ${sentenceTopics.length} sentence topics, and ${quizQuestions.length} quiz questions.`);
+    console.log(`Seeded ${vocabulary.length} vocabulary items, ${grammar.length} grammar topics, ${pronunciation.length} pronunciation lessons, ${sentenceTopics.length} sentence topics, ${phrases.length} phrases, and ${quizQuestions.length} quiz questions.`);
   } catch (error) {
     await connection.rollback();
     throw error;

@@ -1,66 +1,132 @@
-import React, { useState, useMemo } from "react";
-import { Search, Heart, BookOpenText, X, RotateCcw } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Search, Heart, BookOpenText, X, RotateCcw, Plus, Trash2 } from "lucide-react";
 import { Badge } from "../components/Layout.jsx";
 import Layout from "../components/Layout.jsx";
+import { api } from "../api/client.js";
 
-const CATEGORIES = ["All", "Business", "Travel", "Daily", "Academic", "Idioms", "Slang"];
-
-const PHRASE_DATA = [
-  { phrase: "Break the ice", meaning: "To start a conversation in a social situation", category: "Social", level: "A2" },
-  { phrase: "Hit the nail on the head", meaning: "To describe exactly what is causing a situation or problem", category: "Idioms", level: "B1" },
-  { phrase: "Let's touch base", meaning: "To connect with someone at a later time", category: "Business", level: "B1" },
-  { phrase: "I'm feeling under the weather", meaning: "To feel sick or unwell", category: "Daily", level: "A2" },
-  { phrase: "The ball is in your court", meaning: "It's your decision or turn to act", category: "Idioms", level: "B2" },
-  { phrase: "Can you elaborate?", meaning: "Could you explain more in detail?", category: "Academic", level: "C1" },
-  { phrase: "It's a piece of cake", meaning: "Something is very easy to do", category: "Idioms", level: "A2" },
-  { phrase: "I'd like to follow up", meaning: "To continue or revisit a topic later", category: "Business", level: "B1" },
-  { phrase: "On the same page", meaning: "To have the same understanding or opinion", category: "Business", level: "B2" },
-  { phrase: "Could you clarify that?", meaning: "Can you make that clearer?", category: "Academic", level: "B1" },
-  { phrase: "I'm on board", meaning: "I agree or I'm ready to participate", category: "Daily", level: "A2" },
-  { phrase: "That's a good point", meaning: "I acknowledge what you said is valid", category: "Social", level: "B1" },
-  { phrase: "Let's dive in", meaning: "Let's start working on something", category: "Business", level: "A2" },
-  { phrase: "Time flies when you're having fun", meaning: "Time passes quickly when you enjoy yourself", category: "Daily", level: "A1" },
-  { phrase: "The early bird catches the worm", meaning: "Being early gives you an advantage", category: "Idioms", level: "A2" },
-];
+const LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"];
 
 export default function PhraseBank() {
+  const [items, setItems] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [total, setTotal] = useState(0);
   const [query, setQuery] = useState("");
+  const [submittedQuery, setSubmittedQuery] = useState("");
   const [category, setCategory] = useState("All");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
-  const [favorites, setFavorites] = useState(() => new Set());
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newPhrase, setNewPhrase] = useState({ phrase: "", meaning: "", category: "Daily", cefr_level: "A2" });
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState(null);
 
-  const counts = useMemo(() => {
-    const map = { All: PHRASE_DATA.length };
-    for (const p of PHRASE_DATA) map[p.category] = (map[p.category] || 0) + 1;
-    return map;
-  }, []);
+  const load = useCallback(async (overrides = {}) => {
+    const activeCategory = overrides.category !== undefined ? overrides.category : category;
+    const activeQuery = overrides.query !== undefined ? overrides.query : submittedQuery;
+    const activeFavorites = overrides.favorites !== undefined ? overrides.favorites : showFavoritesOnly;
+    setLoading(true);
+    setError(null);
+    try {
+      const params = {};
+      if (activeCategory !== "All") params.category = activeCategory;
+      if (activeQuery.trim()) params.search = activeQuery.trim();
+      if (activeFavorites) params.favorites = "true";
+      const [list, cats] = await Promise.all([
+        api.listPhrases(params),
+        api.getPhraseCategories().catch(() => null),
+      ]);
+      setItems(list);
+      if (cats) {
+        setCategories(cats.categories || []);
+        setTotal(cats.total || 0);
+      }
+    } catch (err) {
+      setError(err.message || "Failed to load phrases");
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [category, submittedQuery, showFavoritesOnly]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return PHRASE_DATA.filter((p) => {
-      if (category !== "All" && p.category !== category) return false;
-      if (showFavoritesOnly && !favorites.has(p.phrase)) return false;
-      if (q && !p.phrase.toLowerCase().includes(q) && !p.meaning.toLowerCase().includes(q)) return false;
-      return true;
+  useEffect(() => {
+    load();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const favoriteCount = useMemo(() => items.filter((i) => i.favorite).length, [items]);
+  const categoryCount = useCallback((name) => {
+    if (name === "All") return total;
+    return categories.find((c) => c.name === name)?.count ?? 0;
+  }, [categories, total]);
+
+  function handleSearchSubmit(e) {
+    e.preventDefault();
+    setSubmittedQuery(query);
+    load({ query });
+  }
+
+  function handleCategoryChange(name) {
+    setCategory(name);
+    load({ category: name });
+  }
+
+  function handleFavoritesToggle() {
+    const next = !showFavoritesOnly;
+    setShowFavoritesOnly(next);
+    load({ favorites: next });
+  }
+
+  async function toggleFavorite(item) {
+    const next = !item.favorite;
+    setItems((prev) => {
+      const updated = prev.map((p) => (p.id === item.id ? { ...p, favorite: next } : p));
+      return showFavoritesOnly && !next ? updated.filter((p) => p.id !== item.id) : updated;
     });
-  }, [query, category, showFavoritesOnly, favorites]);
+    try {
+      await api.favoritePhrase(item.id, next);
+    } catch {
+      setItems((prev) => prev.map((p) => (p.id === item.id ? { ...p, favorite: !next } : p)));
+    }
+  }
 
-  function toggleFavorite(phrase) {
-    setFavorites((prev) => {
-      const next = new Set(prev);
-      if (next.has(phrase)) next.delete(phrase);
-      else next.add(phrase);
-      return next;
-    });
+  async function handleAddPhrase(e) {
+    e.preventDefault();
+    setSaving(true);
+    setFormError(null);
+    try {
+      const created = await api.createPhrase(newPhrase);
+      setItems((prev) => [created, ...prev]);
+      setTotal((t) => t + 1);
+      setNewPhrase({ phrase: "", meaning: "", category: "Daily", cefr_level: "A2" });
+      setShowAddForm(false);
+      load();
+    } catch (err) {
+      setFormError(err.message || "Failed to save phrase");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id) {
+    const previous = items;
+    setItems((prev) => prev.filter((p) => p.id !== id));
+    try {
+      await api.deletePhrase(id);
+      setTotal((t) => Math.max(0, t - 1));
+    } catch {
+      setItems(previous);
+    }
   }
 
   function resetFilters() {
     setQuery("");
+    setSubmittedQuery("");
     setCategory("All");
     setShowFavoritesOnly(false);
+    load({ query: "", category: "All", favorites: false });
   }
 
-  const hasActiveFilters = query.trim() !== "" || category !== "All" || showFavoritesOnly;
+  const hasActiveFilters = submittedQuery.trim() !== "" || category !== "All" || showFavoritesOnly;
 
   return (
     <Layout>
@@ -74,23 +140,28 @@ export default function PhraseBank() {
         <div className="phrase-stats" aria-label="Collection stats">
           <div className="phrase-stat">
             <BookOpenText size={16} aria-hidden="true" />
-            <span><strong>{PHRASE_DATA.length}</strong> phrases</span>
+            <span><strong>{total}</strong> phrases</span>
           </div>
           <div className="phrase-stat">
             <Heart size={16} aria-hidden="true" />
-            <span><strong>{favorites.size}</strong> favorited</span>
+            <span><strong>{favoriteCount}</strong> favorited on screen</span>
           </div>
           <div className="phrase-stat">
-            <span><strong>{counts[category] ?? 0}</strong> in {category === "All" ? "all categories" : category}</span>
+            <span><strong>{categoryCount(category)}</strong> in {category === "All" ? "all categories" : category}</span>
           </div>
         </div>
 
+        {error && (
+          <div className="error-banner">
+            {error}{" "}
+            <button type="button" className="link-btn" onClick={() => load()}>
+              Try again
+            </button>
+          </div>
+        )}
+
         <div className="panel phrase-controls">
-          <form
-            className="phrase-search"
-            onSubmit={(e) => e.preventDefault()}
-            role="search"
-          >
+          <form className="phrase-search" onSubmit={handleSearchSubmit} role="search">
             <Search size={18} className="phrase-search-icon" aria-hidden="true" />
             <input
               className="phrase-search-input"
@@ -103,7 +174,7 @@ export default function PhraseBank() {
               <button
                 type="button"
                 className="phrase-clear-btn"
-                onClick={() => setQuery("")}
+                onClick={() => { setQuery(""); setSubmittedQuery(""); load({ query: "" }); }}
                 aria-label="Clear search"
               >
                 <X size={16} />
@@ -113,17 +184,17 @@ export default function PhraseBank() {
 
           <div className="phrase-filter-row">
             <div className="category-tabs" role="tablist" aria-label="Filter by category">
-              {CATEGORIES.map((cat) => (
+              {["All", ...categories.map((c) => c.name)].map((cat) => (
                 <button
                   key={cat}
                   type="button"
                   role="tab"
                   aria-selected={category === cat}
                   className={`category-tab ${category === cat ? "active" : ""}`}
-                  onClick={() => setCategory(cat)}
+                  onClick={() => handleCategoryChange(cat)}
                 >
                   {cat}
-                  <span className="category-count">{counts[cat] ?? 0}</span>
+                  <span className="category-count">{categoryCount(cat)}</span>
                 </button>
               ))}
             </div>
@@ -131,7 +202,7 @@ export default function PhraseBank() {
             <button
               type="button"
               className={`favorites-toggle ${showFavoritesOnly ? "active" : ""}`}
-              onClick={() => setShowFavoritesOnly((v) => !v)}
+              onClick={handleFavoritesToggle}
               aria-pressed={showFavoritesOnly}
               title="Show favorites only"
             >
@@ -139,19 +210,79 @@ export default function PhraseBank() {
               Favorites
             </button>
           </div>
+
+          <div className="phrase-add-row">
+            <button
+              type="button"
+              className="secondary phrase-add-toggle"
+              onClick={() => setShowAddForm((v) => !v)}
+              aria-expanded={showAddForm}
+            >
+              <Plus size={15} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: "6px" }} />
+              {showAddForm ? "Close form" : "Add your own phrase"}
+            </button>
+          </div>
+
+          {showAddForm && (
+            <form className="phrase-add-form" onSubmit={handleAddPhrase}>
+              <input
+                value={newPhrase.phrase}
+                onChange={(e) => setNewPhrase((p) => ({ ...p, phrase: e.target.value }))}
+                placeholder="Phrase (e.g. Break the ice)"
+                aria-label="New phrase"
+                maxLength={255}
+              />
+              <input
+                value={newPhrase.meaning}
+                onChange={(e) => setNewPhrase((p) => ({ ...p, meaning: e.target.value }))}
+                placeholder="Meaning"
+                aria-label="Phrase meaning"
+                maxLength={2000}
+              />
+              <div className="phrase-add-meta">
+                <input
+                  value={newPhrase.category}
+                  onChange={(e) => setNewPhrase((p) => ({ ...p, category: e.target.value }))}
+                  placeholder="Category"
+                  aria-label="Phrase category"
+                  maxLength={100}
+                />
+                <select
+                  value={newPhrase.cefr_level}
+                  onChange={(e) => setNewPhrase((p) => ({ ...p, cefr_level: e.target.value }))}
+                  aria-label="CEFR level"
+                >
+                  {LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+                </select>
+                <button type="submit" disabled={saving}>
+                  {saving ? "Saving…" : "Save phrase"}
+                </button>
+              </div>
+              {formError && <div className="error-banner">{formError}</div>}
+            </form>
+          )}
         </div>
 
-        {filtered.length > 0 && (
+        {!loading && !error && items.length > 0 && (
           <div className="result-count" aria-live="polite">
-            Showing {filtered.length} of {PHRASE_DATA.length} phrases
+            Showing {items.length} phrase{items.length === 1 ? "" : "s"}
           </div>
         )}
 
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="phrase-bank-grid" aria-hidden="true">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="panel phrase-card">
+                <div className="skeleton skeleton-line" />
+                <div className="skeleton skeleton-line short" />
+              </div>
+            ))}
+          </div>
+        ) : items.length === 0 && !error ? (
           <div className="empty-state">
             <div className="empty-state-icon" aria-hidden="true">📖</div>
             <h3>No phrases found</h3>
-            <p>Try adjusting your search or filter to find what you're looking for.</p>
+            <p>Try adjusting your search or filter — or add your own phrase above.</p>
             {hasActiveFilters && (
               <button type="button" className="secondary" onClick={resetFilters}>
                 <RotateCcw size={15} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: "6px" }} />
@@ -161,33 +292,43 @@ export default function PhraseBank() {
           </div>
         ) : (
           <div className="phrase-bank-grid">
-            {filtered.map((item) => {
-              const isFav = favorites.has(item.phrase);
-              return (
-                <article key={item.phrase} className="panel phrase-card">
-                  <div className="phrase-card-body">
-                    <p className="phrase-text">“{item.phrase}”</p>
-                    <p className="phrase-meaning">{item.meaning}</p>
+            {items.map((item) => (
+              <article key={item.id} className="panel phrase-card">
+                <div className="phrase-card-body">
+                  <p className="phrase-text">“{item.phrase}”</p>
+                  <p className="phrase-meaning">{item.meaning}</p>
+                </div>
+                <div className="phrase-card-footer">
+                  <div className="phrase-badges">
+                    <Badge variant="info">{item.category}</Badge>
+                    <Badge variant="secondary">{item.cefr_level}</Badge>
                   </div>
-                  <div className="phrase-card-footer">
-                    <div className="phrase-badges">
-                      <Badge variant="info">{item.category}</Badge>
-                      <Badge variant="secondary">{item.level}</Badge>
-                    </div>
+                  <div className="phrase-actions">
+                    {item.mine && (
+                      <button
+                        type="button"
+                        className="phrase-del-btn"
+                        onClick={() => handleDelete(item.id)}
+                        aria-label={`Delete "${item.phrase}"`}
+                        title="Delete your phrase"
+                      >
+                        <Trash2 size={16} aria-hidden="true" />
+                      </button>
+                    )}
                     <button
                       type="button"
-                      className={`phrase-fav-btn ${isFav ? "favorited" : ""}`}
-                      onClick={() => toggleFavorite(item.phrase)}
-                      aria-label={isFav ? `Remove "${item.phrase}" from favorites` : `Add "${item.phrase}" to favorites`}
-                      aria-pressed={isFav}
-                      title={isFav ? "Remove from favorites" : "Add to favorites"}
+                      className={`phrase-fav-btn ${item.favorite ? "favorited" : ""}`}
+                      onClick={() => toggleFavorite(item)}
+                      aria-label={item.favorite ? `Remove "${item.phrase}" from favorites` : `Add "${item.phrase}" to favorites`}
+                      aria-pressed={!!item.favorite}
+                      title={item.favorite ? "Remove from favorites" : "Add to favorites"}
                     >
-                      <Heart size={17} fill={isFav ? "currentColor" : "none"} aria-hidden="true" />
+                      <Heart size={17} fill={item.favorite ? "currentColor" : "none"} aria-hidden="true" />
                     </button>
                   </div>
-                </article>
-              );
-            })}
+                </div>
+              </article>
+            ))}
           </div>
         )}
       </div>

@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import Layout, { BottomNavigation, Badge } from "./components/Layout.jsx";
 import Login from "./pages/Login.jsx";
@@ -19,7 +19,7 @@ import LearningProgress from "./pages/LearningProgress.jsx";
 import PhraseBank from "./pages/PhraseBank.jsx";
 import Settings from "./pages/Settings.jsx";
 import TypographyTool from "./pages/TypographyTool/TypographyTool.jsx";
-import { getStoredUser } from "./api/client.js";
+import { getStoredUser, api } from "./api/client.js";
 
 function RequireAuth({ children }) {
   const user = getStoredUser();
@@ -225,6 +225,25 @@ function ScenariosHome() {
 }
 
 function Profile() {
+  const user = getStoredUser();
+  const [progress, setProgress] = useState(null);
+  const [progressError, setProgressError] = useState(null);
+
+  useEffect(() => {
+    api.getProgress()
+      .then((p) => setProgress(Array.isArray(p) ? p[0] : p))
+      .catch((err) => setProgressError(err.message));
+  }, []);
+
+  const displayName = user?.displayName || user?.display_name || user?.username || "Student";
+  const roleLabel = user?.role === "teacher" ? "Teacher" : "Student";
+  const stats = [
+    { value: progress ? `${progress.overall ?? 0}%` : progressError ? "—" : "…", label: "Overall progress" },
+    { value: progress ? (progress.currentLevel || "A1") : progressError ? "—" : "…", label: "CEFR level" },
+    { value: progress ? (progress.progress?.vocabulary?.completed ?? 0) : progressError ? "—" : "…", label: "Words learned" },
+    { value: progress ? `${progress.totalCompleted ?? 0}/${progress.totalUnits ?? 0}` : progressError ? "—" : "…", label: "Units complete" },
+  ];
+
   return (
     <Layout>
     <div className="fade-in">
@@ -234,29 +253,20 @@ function Profile() {
       </div>
       <div className="panel profile-panel">
         <div className="profile-head">
-          <div className="avatar avatar-lg">U</div>
+          <div className="avatar avatar-lg">{displayName.charAt(0).toUpperCase()}</div>
           <div className="profile-head-text">
-            <h3>User</h3>
-            <p>student@lingo.com</p>
+            <h3>{displayName}</h3>
+            <p>{user?.username || roleLabel}</p>
           </div>
         </div>
+        {progressError && <div className="error-banner">{progressError}</div>}
         <div className="profile-stats-grid">
-          <div className="progress-stat">
-            <div className="stat-value">24</div>
-            <div className="stat-label">Sessions</div>
-          </div>
-          <div className="progress-stat">
-            <div className="stat-value">12h</div>
-            <div className="stat-label">Practice Time</div>
-          </div>
-          <div className="progress-stat">
-            <div className="stat-value">58</div>
-            <div className="stat-label">Phrases</div>
-          </div>
-          <div className="progress-stat">
-            <div className="stat-value">6</div>
-            <div className="stat-label">Scenarios</div>
-          </div>
+          {stats.map((s) => (
+            <div className="progress-stat" key={s.label}>
+              <div className="stat-value">{s.value}</div>
+              <div className="stat-label">{s.label}</div>
+            </div>
+          ))}
         </div>
         <h3 style={{ marginBottom: "var(--space-3)" }}>Settings</h3>
         {[
