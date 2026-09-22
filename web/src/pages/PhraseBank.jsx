@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
-import { Badge, Button, EmptyState } from "../components/Layout.jsx";
+import { Search, Heart, BookOpenText, X, RotateCcw } from "lucide-react";
+import { Badge } from "../components/Layout.jsx";
 import Layout from "../components/Layout.jsx";
-import { api } from "../api/client.js";
 
 const CATEGORIES = ["All", "Business", "Travel", "Daily", "Academic", "Idioms", "Slang"];
 
@@ -26,15 +26,24 @@ const PHRASE_DATA = [
 export default function PhraseBank() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
-  const [favorites, setFavorites] = useState(new Set());
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [favorites, setFavorites] = useState(() => new Set());
+
+  const counts = useMemo(() => {
+    const map = { All: PHRASE_DATA.length };
+    for (const p of PHRASE_DATA) map[p.category] = (map[p.category] || 0) + 1;
+    return map;
+  }, []);
 
   const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
     return PHRASE_DATA.filter((p) => {
-      const matchCategory = category === "All" || p.category === category;
-      const matchQuery = p.phrase.toLowerCase().includes(query.toLowerCase()) || p.meaning.toLowerCase().includes(query.toLowerCase());
-      return matchCategory && matchQuery;
+      if (category !== "All" && p.category !== category) return false;
+      if (showFavoritesOnly && !favorites.has(p.phrase)) return false;
+      if (q && !p.phrase.toLowerCase().includes(q) && !p.meaning.toLowerCase().includes(q)) return false;
+      return true;
     });
-  }, [query, category]);
+  }, [query, category, showFavoritesOnly, favorites]);
 
   function toggleFavorite(phrase) {
     setFavorites((prev) => {
@@ -45,71 +54,143 @@ export default function PhraseBank() {
     });
   }
 
+  function resetFilters() {
+    setQuery("");
+    setCategory("All");
+    setShowFavoritesOnly(false);
+  }
+
+  const hasActiveFilters = query.trim() !== "" || category !== "All" || showFavoritesOnly;
+
   return (
     <Layout>
-    
-      <div className="fade-in">
-        <div className="home-header">
-          <p className="home-greeting">Your personal phrase collection</p>
-          <h1 className="home-title">Phrase Bank</h1>
-          <p style={{ marginTop: "var(--space-2)", color: "var(--color-secondary-text)" }}>
-            Save and organize useful phrases from your practice sessions
-          </p>
+      <div className="fade-in phrase-bank">
+        <div className="eyebrow">Your personal phrase collection</div>
+        <h1>Phrase Bank</h1>
+        <p className="page-subtitle">
+          Save and organize useful phrases from your practice sessions.
+        </p>
+
+        <div className="phrase-stats" aria-label="Collection stats">
+          <div className="phrase-stat">
+            <BookOpenText size={16} aria-hidden="true" />
+            <span><strong>{PHRASE_DATA.length}</strong> phrases</span>
+          </div>
+          <div className="phrase-stat">
+            <Heart size={16} aria-hidden="true" />
+            <span><strong>{favorites.size}</strong> favorited</span>
+          </div>
+          <div className="phrase-stat">
+            <span><strong>{counts[category] ?? 0}</strong> in {category === "All" ? "all categories" : category}</span>
+          </div>
         </div>
 
-        <div className="search-bar">
-          <span className="search-icon">🔍</span>
-          <input
-            className="input"
-            placeholder="Search phrases or meanings..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </div>
+        <div className="panel phrase-controls">
+          <form
+            className="phrase-search"
+            onSubmit={(e) => e.preventDefault()}
+            role="search"
+          >
+            <Search size={18} className="phrase-search-icon" aria-hidden="true" />
+            <input
+              className="phrase-search-input"
+              placeholder="Search phrases or meanings…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Search phrases or meanings"
+            />
+            {query && (
+              <button
+                type="button"
+                className="phrase-clear-btn"
+                onClick={() => setQuery("")}
+                aria-label="Clear search"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </form>
 
-        <div className="category-tabs">
-          {CATEGORIES.map((cat) => (
+          <div className="phrase-filter-row">
+            <div className="category-tabs" role="tablist" aria-label="Filter by category">
+              {CATEGORIES.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  role="tab"
+                  aria-selected={category === cat}
+                  className={`category-tab ${category === cat ? "active" : ""}`}
+                  onClick={() => setCategory(cat)}
+                >
+                  {cat}
+                  <span className="category-count">{counts[cat] ?? 0}</span>
+                </button>
+              ))}
+            </div>
+
             <button
-              key={cat}
-              className={`category-tab ${category === cat ? 'active' : ''}`}
-              onClick={() => setCategory(cat)}
+              type="button"
+              className={`favorites-toggle ${showFavoritesOnly ? "active" : ""}`}
+              onClick={() => setShowFavoritesOnly((v) => !v)}
+              aria-pressed={showFavoritesOnly}
+              title="Show favorites only"
             >
-              {cat}
+              <Heart size={15} aria-hidden="true" />
+              Favorites
             </button>
-          ))}
+          </div>
         </div>
+
+        {filtered.length > 0 && (
+          <div className="result-count" aria-live="polite">
+            Showing {filtered.length} of {PHRASE_DATA.length} phrases
+          </div>
+        )}
 
         {filtered.length === 0 ? (
-          <EmptyState icon="📖" title="No phrases found" description="Try adjusting your search or filter to find what you're looking for." />
+          <div className="empty-state">
+            <div className="empty-state-icon" aria-hidden="true">📖</div>
+            <h3>No phrases found</h3>
+            <p>Try adjusting your search or filter to find what you're looking for.</p>
+            {hasActiveFilters && (
+              <button type="button" className="secondary" onClick={resetFilters}>
+                <RotateCcw size={15} aria-hidden="true" style={{ verticalAlign: "-2px", marginRight: "6px" }} />
+                Reset filters
+              </button>
+            )}
+          </div>
         ) : (
           <div className="phrase-bank-grid">
-            {filtered.map((phrase, i) => (
-              <div key={i} className="phrase-card panel-hover" style={{ cursor: "pointer" }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: "var(--text-body)", fontWeight: 600, color: "var(--color-primary-text)" }}>
-                    {phrase.phrase}
+            {filtered.map((item) => {
+              const isFav = favorites.has(item.phrase);
+              return (
+                <article key={item.phrase} className="panel phrase-card">
+                  <div className="phrase-card-body">
+                    <p className="phrase-text">“{item.phrase}”</p>
+                    <p className="phrase-meaning">{item.meaning}</p>
                   </div>
-                  <div style={{ fontSize: "var(--text-caption)", color: "var(--color-secondary-text)", marginTop: "var(--space-1)" }}>
-                    {phrase.meaning}
+                  <div className="phrase-card-footer">
+                    <div className="phrase-badges">
+                      <Badge variant="info">{item.category}</Badge>
+                      <Badge variant="secondary">{item.level}</Badge>
+                    </div>
+                    <button
+                      type="button"
+                      className={`phrase-fav-btn ${isFav ? "favorited" : ""}`}
+                      onClick={() => toggleFavorite(item.phrase)}
+                      aria-label={isFav ? `Remove "${item.phrase}" from favorites` : `Add "${item.phrase}" to favorites`}
+                      aria-pressed={isFav}
+                      title={isFav ? "Remove from favorites" : "Add to favorites"}
+                    >
+                      <Heart size={17} fill={isFav ? "currentColor" : "none"} aria-hidden="true" />
+                    </button>
                   </div>
-                  <div style={{ display: "flex", gap: "var(--space-2)", marginTop: "var(--space-2)" }}>
-                    <Badge variant="info">{phrase.category}</Badge>
-                    <Badge variant="secondary">{phrase.level}</Badge>
-                  </div>
-                </div>
-                <button
-                  className={`btn btn-ghost ${favorites.has(phrase.phrase) ? 'favorited' : ''}`}
-                  onClick={() => toggleFavorite(phrase.phrase)}
-                  style={{ padding: "8px", minWidth: "36px", color: favorites.has(phrase.phrase) ? "var(--color-error)" : "var(--color-secondary-text)" }}
-                >
-                  {favorites.has(phrase.phrase) ? "❤️" : "🤍"}
-                </button>
-              </div>
-            ))}
+                </article>
+              );
+            })}
           </div>
         )}
       </div>
-    
     </Layout>
   );
 }

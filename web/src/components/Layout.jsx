@@ -1,20 +1,19 @@
 import React, { useState, useRef, useEffect } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
-  Home, BookOpen, Headphones, Library, TrendingUp, User, Settings, Menu, X, Bell,
-  Mic, Volume2, ArrowLeft, HelpCircle, Play, Pause, Heart, Star, Check, Palette, Sparkles
+  Home, BookOpen, Headphones, Library, TrendingUp, Settings, Menu, X, Check, Palette, LogOut
 } from "lucide-react";
 import { getStoredUser, setToken, setStoredUser } from "../api/client.js";
 import { useTheme } from "../context/ThemeContext.jsx";
 import "./Layout.css";
 
 const NAV_ITEMS = [
-  { to: "/", icon: Home, label: "Home" },
-  { to: "/practice", icon: Headphones, label: "Practice" },
-  { to: "/scenarios", icon: BookOpen, label: "Scenarios" },
-  { to: "/phrases", icon: Library, label: "Phrase Bank" },
-  { to: "/progress", icon: TrendingUp, label: "Progress" },
-  { to: "/settings", icon: Settings, label: "Settings" },
+  { to: "/", icon: Home, label: "Home", match: ["/", "/profile"] },
+  { to: "/practice/free", icon: Headphones, label: "Practice", match: ["/practice"] },
+  { to: "/scenarios", icon: BookOpen, label: "Scenarios", match: ["/scenarios"] },
+  { to: "/phrases", icon: Library, label: "Phrase Bank", match: ["/phrases"] },
+  { to: "/learning/progress", icon: TrendingUp, label: "Progress", match: ["/learning/progress", "/progress", "/learning"] },
+  { to: "/settings", icon: Settings, label: "Settings", match: ["/settings"] },
 ];
 
 export function ThemeSwitcherDropdown() {
@@ -89,7 +88,6 @@ export function ThemeSwitcherDropdown() {
 export default function Layout({ children, currentPage }) {
   const user = getStoredUser();
   const navigate = useNavigate();
-  const { currentThemeObj, cycleTheme } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   function handleLogout() {
@@ -102,33 +100,34 @@ export default function Layout({ children, currentPage }) {
     setSidebarOpen(false);
   }
 
+  // Lock body scroll when the mobile sidebar is open + close on Escape
+  useEffect(() => {
+    document.body.style.overflow = sidebarOpen ? "hidden" : "";
+    function onKey(e) {
+      if (e.key === "Escape") setSidebarOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [sidebarOpen]);
+
   return (
     <div className="app-shell">
-      {/* Mobile Top Bar */}
-      <div className="mobile-header-bar" style={{
-        display: "none",
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        height: "56px",
-        background: "var(--color-dark-surface)",
-        borderBottom: "1px solid var(--color-border)",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "0 16px",
-        zIndex: "var(--z-sidebar)",
-      }}>
+      {/* Mobile Top Bar (CSS controls visibility) */}
+      <div className="mobile-header-bar">
         <button
-          className="sidebar-toggle"
+          type="button"
+          className="sidebar-toggle sidebar-toggle-inline"
           onClick={() => setSidebarOpen(!sidebarOpen)}
           aria-label="Toggle navigation"
-          style={{ display: "flex", background: "none", border: "none", padding: "6px" }}
+          aria-expanded={sidebarOpen}
         >
           {sidebarOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
 
-        <div className="brand-text" style={{ fontSize: "1.1rem", fontWeight: 700 }}>
+        <div className="brand-text mobile-brand">
           LingoLife
         </div>
 
@@ -136,9 +135,11 @@ export default function Layout({ children, currentPage }) {
       </div>
 
       <button
-        className="sidebar-toggle"
+        type="button"
+        className="sidebar-toggle sidebar-toggle-fab"
         onClick={() => setSidebarOpen(!sidebarOpen)}
         aria-label="Toggle navigation"
+        aria-expanded={sidebarOpen}
       >
         {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
       </button>
@@ -154,18 +155,20 @@ export default function Layout({ children, currentPage }) {
         </div>
 
         {/* Theme Quick Switcher in Sidebar */}
-        <div style={{ padding: "0 8px 16px" }}>
+        <div className="sidebar-theme-switch">
           <ThemeSwitcherDropdown />
         </div>
 
-        <nav style={{ display: "flex", flexDirection: "column", gap: "2px", flex: 1 }}>
-          {NAV_ITEMS.map(({ to, icon: Icon, label }) => (
+        <nav className="sidebar-nav" aria-label="Primary">
+          {NAV_ITEMS.map(({ to, icon: Icon, label, match }) => (
             <NavLink
               key={to}
               to={to}
               end={to === "/"}
               onClick={closeSidebar}
-              className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
+              className={({ isActive }) =>
+                `nav-item ${isActive || (currentPage && match?.includes(currentPage)) ? "active" : ""}`
+              }
             >
               <Icon size={18} className="nav-icon" />
               <span className="nav-label">{label}</span>
@@ -174,21 +177,21 @@ export default function Layout({ children, currentPage }) {
         </nav>
 
         <div className="sidebar-footer">
-          <div className="sidebar-user" style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px" }}>
+          <div className="sidebar-user">
             <div className="avatar avatar-sm">
               {user?.displayName?.charAt(0) || "?"}
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--color-primary-text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <div className="sidebar-user-info">
+              <div className="sidebar-user-name">
                 {user?.displayName || "Student"}
               </div>
-              <div style={{ fontSize: "0.7rem", color: "var(--color-secondary-text)" }}>
+              <div className="sidebar-user-role">
                 {user?.role === "teacher" ? "Teacher" : "Student"}
               </div>
             </div>
           </div>
-          <button className="nav-item" onClick={handleLogout} style={{ marginTop: "4px" }}>
-            <X size={18} className="nav-icon" />
+          <button type="button" className="nav-item nav-logout" onClick={handleLogout}>
+            <LogOut size={18} className="nav-icon" />
             <span className="nav-label">Log out</span>
           </button>
         </div>
@@ -196,21 +199,15 @@ export default function Layout({ children, currentPage }) {
 
       {sidebarOpen && (
         <div
-          className="sidebar-overlay"
+          className="sidebar-overlay sidebar-overlay-visible"
           onClick={closeSidebar}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.6)",
-            zIndex: 49,
-            display: "block",
-          }}
+          aria-hidden="true"
         />
       )}
 
       <main className="content">
         {/* Desktop Header bar with quick theme switcher */}
-        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", marginBottom: "1.5rem" }}>
+        <div className="content-header">
           <ThemeSwitcherDropdown />
         </div>
         {children}
@@ -220,31 +217,37 @@ export default function Layout({ children, currentPage }) {
 }
 
 export function BottomNavigation({ currentPage }) {
-  const navigate = useNavigate();
   const MOBILE_ITEMS = [
-    { to: "/", icon: Home, label: "Home" },
-    { to: "/practice", icon: Headphones, label: "Practice" },
-    { to: "/scenarios", icon: BookOpen, label: "Scenarios" },
-    { to: "/phrases", icon: Library, label: "Phrases" },
-    { to: "/progress", icon: TrendingUp, label: "Progress" },
+    { to: "/", icon: Home, label: "Home", match: ["/", "/profile"] },
+    { to: "/practice/free", icon: Headphones, label: "Practice", match: ["/practice", "/practice/free"] },
+    { to: "/scenarios", icon: BookOpen, label: "Scenarios", match: ["/scenarios"] },
+    { to: "/phrases", icon: Library, label: "Phrases", match: ["/phrases"] },
+    { to: "/learning/progress", icon: TrendingUp, label: "Progress", match: ["/progress", "/learning/progress", "/learning"] },
   ];
 
+  function isActive(item) {
+    if (currentPage) return item.match?.includes(currentPage);
+    return false;
+  }
+
   return (
-    <nav className="bottom-nav">
-      {MOBILE_ITEMS.map(({ to, icon: Icon, label }) => (
-        <button
+    <nav className="bottom-nav" aria-label="Mobile">
+      {MOBILE_ITEMS.map(({ to, icon: Icon, label, match }) => (
+        <NavLink
           key={to}
-          className={`bottom-nav-item ${currentPage === to ? "active" : ""}`}
-          onClick={() => navigate(to)}
+          to={to}
+          className={({ isActive: routerActive }) =>
+            `bottom-nav-item ${routerActive || isActive({ match }) ? "active" : ""}`
+          }
         >
           <Icon size={20} className="nav-icon" />
-          <span style={{ fontSize: "10px", fontWeight: 500 }}>{label}</span>
-        </button>
+          <span>{label}</span>
+        </NavLink>
       ))}
-      <button className="bottom-nav-item" onClick={() => navigate("/settings")}>
+      <NavLink to="/settings" className={({ isActive }) => `bottom-nav-item ${isActive ? "active" : ""}`}>
         <Settings size={20} className="nav-icon" />
-        <span style={{ fontSize: "10px", fontWeight: 500 }}>Settings</span>
-      </button>
+        <span>Settings</span>
+      </NavLink>
     </nav>
   );
 }

@@ -55,6 +55,42 @@ export const THEMES = [
     bg: "#F1F5F9",
     description: "Crisp white cards, sharp typography and soft borders",
   },
+  {
+    id: "crimson",
+    name: "Crimson Ember",
+    badge: "Bold",
+    color: "#E11D48",
+    accent: "#FB7185",
+    bg: "#16090C",
+    description: "Deep wine black with fiery crimson and soft rose glow",
+  },
+  {
+    id: "gold",
+    name: "Royal Gold",
+    badge: "Luxury",
+    color: "#EAB308",
+    accent: "#F59E0B",
+    bg: "#12100A",
+    description: "Midnight noir with rich golden amber and champagne highlights",
+  },
+  {
+    id: "blossom",
+    name: "Blossom Light",
+    badge: "Soft",
+    color: "#DB2777",
+    accent: "#8B5CF6",
+    bg: "#FFF5F7",
+    description: "Airy blush white with vivid pink and gentle violet touches",
+  },
+  {
+    id: "slate",
+    name: "Cloud Slate",
+    badge: "Calm",
+    color: "#475569",
+    accent: "#0EA5E9",
+    bg: "#E8EEF4",
+    description: "Cool slate gray with sky blue accents on soft cloud gray",
+  },
 ];
 
 const ThemeContext = createContext({
