@@ -3,6 +3,13 @@ import { v4 as uuid } from "uuid";
 import { pool } from "../db/pool.js";
 import { synthesize } from "../core/audio.js";
 import { requireAuth } from "../middleware/auth.js";
+import {
+  assignLevelStatuses,
+  buildLevelProgress,
+  categoryPercent,
+  overallPercent,
+  summarizeLevels,
+} from "../core/progress.js";
 
 const router = Router();
 const levels = ["A1", "A2", "B1", "B2", "C1", "C2"];
@@ -281,10 +288,91 @@ router.get("/progress", requireAuth, async (req, res, next) => {
     const [pronunciationRows] = await pool.query(`SELECT COUNT(pl.id) AS total, COUNT(CASE WHEN pp.completed = 1 THEN 1 END) AS completed FROM pronunciation_lessons pl LEFT JOIN pronunciation_progress pp ON pp.lesson_id = pl.id AND pp.user_id = ?`, [req.user.sub]);
     const [sentenceRows] = await pool.query(`SELECT COUNT(st.id) AS total, COUNT(CASE WHEN sp.completed = 1 THEN 1 END) AS completed FROM sentence_structure_topics st LEFT JOIN sentence_progress sp ON sp.topic_id = st.id AND sp.user_id = ?`, [req.user.sub]);
     const [quizRows] = await pool.query(`SELECT COUNT(*) AS attempts, COALESCE(SUM(is_correct), 0) AS correct FROM quiz_attempts WHERE user_id = ?`, [req.user.sub]);
-    const metric = (row) => ({ total: Number(row.total), completed: Number(row.completed), percent: row.total ? Math.round((row.completed / row.total) * 100) : 0 });
+    const metric = (row) => ({ total: Number(row.total), completed: Number(row.completed), percent: categoryPercent(row.completed, row.total) });
     const progress = { vocabulary: metric(vocabularyRows[0]), grammar: metric(grammarRows[0]), pronunciation: metric(pronunciationRows[0]), sentence_structure: metric(sentenceRows[0]), quiz: { attempts: Number(quizRows[0].attempts), correct: Number(quizRows[0].correct), percent: quizRows[0].attempts ? Math.round((quizRows[0].correct / quizRows[0].attempts) * 100) : 0 } };
-    const overall = Math.round((progress.vocabulary.percent + progress.grammar.percent + progress.pronunciation.percent + progress.sentence_structure.percent) / 4);
-    res.json({ overall, currentLevel: req.query.level && levels.includes(req.query.level) ? req.query.level : "A1", targetLevel: "C2", progress });
+    const overall = overallPercent(progress);
+
+    // Per-level breakdown: every eligible unit grouped by its own CEFR level,
+    // completed only via the same explicit completion conditions as above.
+    const userId = req.user.sub;
+    const [vocabByLevel] = await pool.query(
+      `SELECT v.cefr_level, COUNT(*) AS total, COUNT(CASE WHEN vp.status = 'learned' THEN 1 END) AS completed
+       FROM vocabulary v LEFT JOIN vocabulary_progress vp ON vp.vocabulary_id = v.id AND vp.user_id = ? GROUP BY v.cefr_level`, [userId]);
+    const [grammarByLevel] = await pool.query(
+      `SELECT gt.cefr_level, COUNT(*) AS total, COUNT(CASE WHEN gp.status = 'completed' THEN 1 END) AS completed
+       FROM grammar_topics gt LEFT JOIN grammar_progress gp ON gp.grammar_topic_id = gt.id AND gp.user_id = ? GROUP BY gt.cefr_level`, [userId]);
+    const [pronByLevel] = await pool.query(
+      `SELECT pl.cefr_level, COUNT(*) AS total, COUNT(CASE WHEN pp.completed = 1 THEN 1 END) AS completed
+       FROM pronunciation_lessons pl LEFT JOIN pronunciation_progress pp ON pp.lesson_id = pl.id AND pp.user_id = ? GROUP BY pl.cefr_level`, [userId]);
+    const [sentenceByLevel] = await pool.query(
+      `SELECT st.cefr_level, COUNT(*) AS total, COUNT(CASE WHEN sp.completed = 1 THEN 1 END) AS completed
+       FROM sentence_structure_topics st LEFT JOIN sentence_progress sp ON sp.topic_id = st.id AND sp.user_id = ? GROUP BY st.cefr_level`, [userId]);
+    const [levelTitles] = await pool.query(`SELECT code, title FROM cefr_levels`);
+    const titleByCode = new Map(levelTitles.map((r) => [r.code, r.title]));
+    const levels = assignLevelStatuses(buildLevelProgress({
+      vocabulary: vocabByLevel, grammar: grammarByLevel, pronunciation: pronByLevel, sentence_structure: sentenceByLevel,
+    })).map((l) => ({ ...l, title: titleByCode.get(l.code) || l.code }));
+    const summary = summarizeLevels(levels);
+
+    res.json({
+      overall,
+      currentLevel: summary.currentLevel,
+      targetLevel: "C2",
+      progress,
+      levels,
+      nextLevel: summary.nextLevel,
+      completedLevels: summary.completedLevels,
+      totalCompleted: summary.totalCompleted,
+      totalUnits: summary.totalUnits,
+      allComplete: summary.allComplete,
+    });
+  } catch (error) { next(error); }
+});
+
+// Recent learning activity for the authenticated user only.
+// Returns real recorded events (newest first); empty array for new users.
+// Never invents activity.
+router.get("/activity", requireAuth, async (req, res, next) => {
+  try {
+    const userId = req.user.sub;
+    const limit = Math.min(Math.max(Number.parseInt(req.query.limit || "10", 10) || 10, 1), 25);
+    const [rows] = await pool.query(
+      `SELECT * FROM (
+         SELECT CONCAT('vocab-', vp.vocabulary_id) AS id, 'vocabulary' AS kind,
+                v.word AS title, CONCAT(v.cefr_level, ' vocabulary') AS detail,
+                COALESCE(vp.last_reviewed_at, vp.updated_at) AS happened_at
+         FROM vocabulary_progress vp JOIN vocabulary v ON v.id = vp.vocabulary_id
+         WHERE vp.user_id = ? AND vp.status = 'learned'
+         UNION ALL
+         SELECT CONCAT('grammar-', gp.grammar_topic_id), 'grammar',
+                gt.title, CONCAT(gt.cefr_level, ' grammar'),
+                COALESCE(gp.completed_at, gp.updated_at)
+         FROM grammar_progress gp JOIN grammar_topics gt ON gt.id = gp.grammar_topic_id
+         WHERE gp.user_id = ? AND gp.status = 'completed'
+         UNION ALL
+         SELECT CONCAT('pron-', pp.lesson_id), 'pronunciation',
+                pl.title, CONCAT(pl.cefr_level, ' pronunciation'),
+                pp.updated_at
+         FROM pronunciation_progress pp JOIN pronunciation_lessons pl ON pl.id = pp.lesson_id
+         WHERE pp.user_id = ? AND pp.completed = TRUE
+         UNION ALL
+         SELECT CONCAT('sent-', sp.topic_id), 'sentence_structure',
+                st.title, CONCAT(st.cefr_level, ' sentence structure'),
+                sp.updated_at
+         FROM sentence_progress sp JOIN sentence_structure_topics st ON st.id = sp.topic_id
+         WHERE sp.user_id = ? AND sp.completed = TRUE
+         UNION ALL
+         SELECT CONCAT('quiz-', qa.id), 'quiz',
+                CONCAT(UPPER(qa.skill), ' quiz'),
+                CONCAT(qa.cefr_level, ' · ', CASE WHEN qa.is_correct = 1 THEN 'correct' ELSE 'answered' END),
+                qa.created_at
+         FROM quiz_attempts qa WHERE qa.user_id = ?
+       ) AS activity
+       WHERE happened_at IS NOT NULL
+       ORDER BY happened_at DESC LIMIT ?`,
+      [userId, userId, userId, userId, userId, limit],
+    );
+    res.json(Array.isArray(rows) ? rows : []);
   } catch (error) { next(error); }
 });
 

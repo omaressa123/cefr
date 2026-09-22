@@ -170,4 +170,9 @@ export const api = {
     const data = await request("/recommendations");
     return Array.isArray(data) ? data : data?.recommendations ?? data?.data ?? [];
   },
+
+  getActivity: async (limit = 10) => {
+    const data = await request(`/activity?limit=${limit}`);
+    return Array.isArray(data) ? data : data?.activity ?? data?.data ?? [];
+  },
 };
